@@ -1,8 +1,8 @@
-// GRBL Web Control Pro - App Bundle
-// Todos los módulos incluidos para compatibilidad con Alpine.js
+// GRBL Web Control Pro - App Bundle ARREGLADO
+// Canvas con grid visible, origen claro, y carga SVG funcional
 
 // ============================================
-// CANVAS MANAGER (Fabric.js)
+// CANVAS MANAGER (Fabric.js) - ARREGLADO
 // ============================================
 class CanvasManager {
     constructor(app) {
@@ -25,20 +25,39 @@ class CanvasManager {
 
     init(canvasElement) {
         if (!window.fabric) {
-            console.error('Fabric.js no está cargado');
+            console.error('❌ Fabric.js no está cargado');
             return;
         }
 
         this.canvas = canvasElement;
 
+        const parent = canvasElement.parentElement;
+        const width = parent.clientWidth || 800;
+        const height = parent.clientHeight || 600;
+
+        console.log('🎨 Initializing Canvas Manager');
+        console.log('   Parent size:', width, 'x', height);
+
         // Initialize Fabric.js canvas
         this.fabricCanvas = new fabric.Canvas(canvasElement, {
-            width: canvasElement.parentElement.clientWidth,
-            height: canvasElement.parentElement.clientHeight,
+            width: width,
+            height: height,
             backgroundColor: '#F5F3FA',
             selection: true,
             preserveObjectStacking: true
         });
+
+        console.log('   Canvas created:', this.fabricCanvas.width, 'x', this.fabricCanvas.height);
+
+        // AJUSTAR área de trabajo si es muy grande para el canvas
+        const workAreaPx = this.workArea.width * this.pixelsPerMM;
+        const minDimension = Math.min(width, height);
+
+        if (workAreaPx > minDimension * 0.9) {
+            // Ajustar pixelsPerMM para que quepa
+            this.pixelsPerMM = (minDimension * 0.8) / this.workArea.width;
+            console.log('   ⚠️ Adjusted pixelsPerMM to:', this.pixelsPerMM.toFixed(2), 'to fit canvas');
+        }
 
         // Setup grid and origin
         this.setupGrid();
@@ -49,6 +68,9 @@ class CanvasManager {
 
         // Tool handlers
         this.setupTools();
+
+        // Force render
+        this.fabricCanvas.renderAll();
 
         console.log('✅ Canvas Manager initialized');
     }
@@ -66,52 +88,71 @@ class CanvasManager {
         const centerX = this.fabricCanvas.width / 2;
         const centerY = this.fabricCanvas.height / 2;
 
-        // Work area rectangle
+        console.log('🎨 Setting up grid:');
+        console.log('   Canvas size:', this.fabricCanvas.width, 'x', this.fabricCanvas.height);
+        console.log('   Work area:', workW, 'x', workH, 'pixels');
+        console.log('   Center:', centerX, centerY);
+
+        // Work area rectangle - VISIBLE Y BLANCO
         const workRect = new fabric.Rect({
             left: centerX - workW / 2,
             top: centerY - workH / 2,
             width: workW,
             height: workH,
-            fill: 'transparent',
-            stroke: '#7B6BB8',
-            strokeWidth: 2,
+            fill: '#FFFFFF',
+            stroke: '#5B4B9F',
+            strokeWidth: 3,
             selectable: false,
-            evented: false
+            evented: false,
+            name: 'workArea'
         });
 
         this.fabricCanvas.add(workRect);
+        this.fabricCanvas.sendToBack(workRect);
+        console.log('   ✅ Work area rect added');
 
-        // Grid lines
+        // Grid lines - MÁS VISIBLES
         if (this.showGrid) {
             const gridSpacing = this.gridSize * this.pixelsPerMM;
+            let lineCount = 0;
 
             // Vertical lines
             for (let x = 0; x <= workW; x += gridSpacing) {
+                const isMainLine = (x % (50 * this.pixelsPerMM)) === 0;
                 const line = new fabric.Line([
                     centerX - workW / 2 + x, centerY - workH / 2,
                     centerX - workW / 2 + x, centerY + workH / 2
                 ], {
-                    stroke: 'rgba(123, 107, 184, 0.2)',
-                                             strokeWidth: 1,
+                    stroke: isMainLine ? 'rgba(91, 75, 159, 0.5)' : 'rgba(181, 168, 214, 0.3)',
+                                             strokeWidth: isMainLine ? 1.5 : 0.5,
                                              selectable: false,
-                                             evented: false
+                                             evented: false,
+                                             name: 'gridLine'
                 });
                 this.fabricCanvas.add(line);
+                this.fabricCanvas.sendToBack(line);
+                lineCount++;
             }
 
             // Horizontal lines
             for (let y = 0; y <= workH; y += gridSpacing) {
+                const isMainLine = (y % (50 * this.pixelsPerMM)) === 0;
                 const line = new fabric.Line([
                     centerX - workW / 2, centerY - workH / 2 + y,
                     centerX + workW / 2, centerY - workH / 2 + y
                 ], {
-                    stroke: 'rgba(123, 107, 184, 0.2)',
-                                             strokeWidth: 1,
+                    stroke: isMainLine ? 'rgba(91, 75, 159, 0.5)' : 'rgba(181, 168, 214, 0.3)',
+                                             strokeWidth: isMainLine ? 1.5 : 0.5,
                                              selectable: false,
-                                             evented: false
+                                             evented: false,
+                                             name: 'gridLine'
                 });
                 this.fabricCanvas.add(line);
+                this.fabricCanvas.sendToBack(line);
+                lineCount++;
             }
+
+            console.log('   ✅ Grid lines added:', lineCount);
         }
     }
 
@@ -125,38 +166,73 @@ class CanvasManager {
         const originX = centerX - workW / 2;
         const originY = centerY + workH / 2;
 
-        const axisLength = 30;
+        console.log('📍 Setting up origin at:', originX.toFixed(1), originY.toFixed(1));
 
-        // X axis (red)
+        const axisLength = 50;
+
+        // X axis (red) - MÁS GRUESO
         const xAxis = new fabric.Line([originX, originY, originX + axisLength, originY], {
             stroke: '#FF0000',
-            strokeWidth: 3,
+            strokeWidth: 5,
             selectable: false,
-            evented: false
+            evented: false,
+            name: 'xAxis'
         });
 
-        // Y axis (green)
+        // Y axis (green) - MÁS GRUESO
         const yAxis = new fabric.Line([originX, originY, originX, originY - axisLength], {
             stroke: '#00FF00',
+            strokeWidth: 5,
+            selectable: false,
+            evented: false,
+            name: 'yAxis'
+        });
+
+        // Origin dot - MÁS GRANDE
+        const origin = new fabric.Circle({
+            left: originX - 10,
+            top: originY - 10,
+            radius: 10,
+            fill: '#FFD700',
+            stroke: '#2D1B69',
             strokeWidth: 3,
             selectable: false,
-            evented: false
+            evented: false,
+            name: 'origin'
         });
 
-        // Origin dot
-        const origin = new fabric.Circle({
-            left: originX - 5,
+        // Flecha en X (triángulo)
+        const arrowX = new fabric.Triangle({
+            left: originX + axisLength - 5,
             top: originY - 5,
-            radius: 5,
-            fill: '#FFFFFF',
+            width: 10,
+            height: 10,
+            fill: '#FF0000',
+            angle: 90,
             selectable: false,
             evented: false
         });
 
-        this.fabricCanvas.add(xAxis, yAxis, origin);
+        // Flecha en Y (triángulo)
+        const arrowY = new fabric.Triangle({
+            left: originX - 5,
+            top: originY - axisLength - 5,
+            width: 10,
+            height: 10,
+            fill: '#00FF00',
+            angle: 0,
+            selectable: false,
+            evented: false
+        });
+
+        this.fabricCanvas.add(xAxis, yAxis, origin, arrowX, arrowY);
+        console.log('   ✅ Origin markers added (X axis RED →, Y axis GREEN ↑)');
+
+        this.originMarker = { xAxis, yAxis, origin, arrowX, arrowY };
     }
 
     setupTools() {
+        // Mouse wheel zoom
         this.fabricCanvas.on('mouse:wheel', (opt) => {
             const delta = opt.e.deltaY;
             let zoom = this.fabricCanvas.getZoom();
@@ -166,6 +242,38 @@ class CanvasManager {
             this.fabricCanvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
             opt.e.preventDefault();
             opt.e.stopPropagation();
+        });
+
+        // Pan with middle mouse
+        let isPanning = false;
+        let lastPosX = 0;
+        let lastPosY = 0;
+
+        this.fabricCanvas.on('mouse:down', (opt) => {
+            const evt = opt.e;
+            if (evt.button === 1 || (evt.button === 0 && evt.shiftKey)) {
+                isPanning = true;
+                this.fabricCanvas.selection = false;
+                lastPosX = evt.clientX;
+                lastPosY = evt.clientY;
+            }
+        });
+
+        this.fabricCanvas.on('mouse:move', (opt) => {
+            if (isPanning) {
+                const evt = opt.e;
+                const vpt = this.fabricCanvas.viewportTransform;
+                vpt[4] += evt.clientX - lastPosX;
+                vpt[5] += evt.clientY - lastPosY;
+                this.fabricCanvas.requestRenderAll();
+                lastPosX = evt.clientX;
+                lastPosY = evt.clientY;
+            }
+        });
+
+        this.fabricCanvas.on('mouse:up', () => {
+            isPanning = false;
+            this.fabricCanvas.selection = true;
         });
     }
 
@@ -257,6 +365,8 @@ class CanvasManager {
                         return;
                     }
 
+                    console.log('📦 SVG objects loaded:', objects.length);
+
                     // Clear previous
                     if (this.svgGroup) {
                         this.fabricCanvas.remove(this.svgGroup);
@@ -264,38 +374,61 @@ class CanvasManager {
 
                     // Change color of all objects BEFORE grouping
                     objects.forEach(obj => {
-                        if (obj.stroke) obj.set('stroke', '#5B4B9F');
-                        if (!obj.stroke && obj.fill) obj.set('fill', '#5B4B9F');
+                        // Hacer objetos MÁS VISIBLES
+                        if (obj.stroke) {
+                            obj.set('stroke', '#2D1B69');
+                            obj.set('strokeWidth', 2);
+                        }
+                        if (!obj.stroke && obj.fill) {
+                            obj.set('fill', '#5B4B9F');
+                        }
+                        if (!obj.stroke && !obj.fill) {
+                            obj.set('stroke', '#2D1B69');
+                            obj.set('strokeWidth', 2);
+                        }
                     });
 
-                        // Create group from objects
-                        if (objects.length === 1) {
-                            this.svgGroup = objects[0];
-                        } else {
-                            this.svgGroup = new fabric.Group(objects, options);
-                        }
+                    // Create group from objects
+                    if (objects.length === 1) {
+                        this.svgGroup = objects[0];
+                    } else {
+                        this.svgGroup = new fabric.Group(objects, options);
+                    }
 
-                        // Position at origin
-                        const workW = this.workArea.width * this.pixelsPerMM;
-                        const workH = this.workArea.height * this.pixelsPerMM;
-                        const centerX = this.fabricCanvas.width / 2;
-                        const centerY = this.fabricCanvas.height / 2;
-                        const originX = centerX - workW / 2;
-                        const originY = centerY + workH / 2;
+                    // Position at origin (bottom-left)
+                    const workW = this.workArea.width * this.pixelsPerMM;
+                    const workH = this.workArea.height * this.pixelsPerMM;
+                    const centerX = this.fabricCanvas.width / 2;
+                    const centerY = this.fabricCanvas.height / 2;
+                    const originX = centerX - workW / 2;
+                    const originY = centerY + workH / 2;
 
-                        this.svgGroup.set({
-                            left: originX,
-                            top: originY - this.svgGroup.height,
-                            selectable: true,
-                            hasControls: true
-                        });
+                    // Scale SVG if too big
+                    const maxSize = Math.min(workW, workH) * 0.8;
+                    const currentSize = Math.max(this.svgGroup.width, this.svgGroup.height);
+                    let scale = 1;
+                    if (currentSize > maxSize) {
+                        scale = maxSize / currentSize;
+                    }
 
-                        this.fabricCanvas.add(this.svgGroup);
-                        this.fabricCanvas.setActiveObject(this.svgGroup);
-                        this.fabricCanvas.renderAll();
+                    this.svgGroup.set({
+                        left: originX + 20, // Pequeño offset del origen
+                        top: originY - (this.svgGroup.height * scale) - 20,
+                                      scaleX: scale,
+                                      scaleY: scale,
+                                      selectable: true,
+                                      hasControls: true
+                    });
 
-                        console.log('✅ SVG loaded:', objects.length, 'objects');
-                        resolve();
+                    this.fabricCanvas.add(this.svgGroup);
+                    this.fabricCanvas.setActiveObject(this.svgGroup);
+                    this.fabricCanvas.renderAll();
+
+                    console.log('✅ SVG positioned at origin');
+                    console.log('   Size:', this.svgGroup.width.toFixed(1), 'x', this.svgGroup.height.toFixed(1), 'px');
+                    console.log('   Scale:', scale.toFixed(2));
+
+                    resolve();
                 });
             };
 
@@ -306,6 +439,7 @@ class CanvasManager {
 
     getPaths() {
         // Simplified - return empty for now
+        // TODO: Implement full path extraction
         return [];
     }
 }
@@ -322,26 +456,42 @@ class GCodeGenerator {
         const lines = [];
 
         // Header
+        lines.push('(Generated by GRBL Web Control Pro v3.0)');
+        lines.push(`(Date: ${new Date().toISOString()})`);
+        lines.push('');
         lines.push('G21 ; mm');
         lines.push('G90 ; absolute');
         lines.push('G17 ; XY plane');
+        lines.push('');
 
         if (config.operationType === 'cnc') {
-            lines.push(`M3 S${config.spindleRPM}`);
-            lines.push(`F${config.feedRate}`);
+            lines.push(`M3 S${config.spindleRPM} ; Start spindle`);
+            lines.push('G4 P2 ; Wait 2s');
         }
 
-        lines.push('G0 Z5');
-        lines.push('G0 X0 Y0');
+        lines.push('G0 Z5 ; Safe height');
+        lines.push('G0 X0 Y0 ; Move to origin');
+        lines.push('');
+
+        // TODO: Add actual path commands here
 
         // End
-        lines.push('G0 Z5');
-        lines.push('M5');
-        lines.push('G0 X0 Y0');
-        lines.push('M30');
+        lines.push('');
+        lines.push('G0 Z10 ; Raise');
+        lines.push('M5 ; Stop spindle');
+        lines.push('G0 X0 Y0 ; Return');
+        lines.push('M2 ; End program');
 
         this.gcode = lines.join('\n');
         return this.gcode;
+    }
+
+    calculateEstimates(gcode, config) {
+        const lines = gcode.split('\n').filter(l => l.trim() && !l.startsWith('('));
+        return {
+            distance: 0,
+            time: lines.length * 0.1 // Estimación simple
+        };
     }
 }
 
@@ -406,7 +556,7 @@ class SerialControl {
                 if (done) break;
 
                 const text = new TextDecoder().decode(value);
-                this.app.addConsoleL(text);
+                this.app.addConsoleLine(text); // ARREGLADO: era addConsoleL
             }
         } catch (error) {
             console.error('Read error:', error);
@@ -434,16 +584,18 @@ class LibraryManager {
     async loadTools() {
         // Fallback defaults
         this.tools = [
-            { id: '1', name: 'End Mill 3mm', diameter: 3, feedRate: 800, rpm: 10000 },
-            { id: '2', name: 'End Mill 6mm', diameter: 6, feedRate: 1200, rpm: 12000 }
+            { id: '1', name: 'End Mill 3.175mm', diameter: 3.175, feedRate: 800, rpm: 10000 },
+            { id: '2', name: 'End Mill 6mm', diameter: 6, feedRate: 1200, rpm: 12000 },
+            { id: '3', name: 'V-Bit 60°', diameter: 6.35, feedRate: 600, rpm: 18000 }
         ];
         return this.tools;
     }
 
     async loadMaterials() {
         this.materials = [
-            { id: '1', name: 'Madera Pine', feedRate: 1200, rpm: 12000 },
-            { id: '2', name: 'MDF', feedRate: 1000, rpm: 16000 }
+            { id: '1', name: 'Madera Pine', thickness: 6, feedRate: 1200, rpm: 12000, depthPerPass: 2 },
+            { id: '2', name: 'MDF', thickness: 6, feedRate: 1000, rpm: 16000, depthPerPass: 1.5 },
+            { id: '3', name: 'Acrilico', thickness: 3, feedRate: 1500, rpm: 18000, depthPerPass: 1 }
         ];
         return this.materials;
     }
@@ -524,7 +676,7 @@ window.grblApp = function() {
 
         // Init
         async init() {
-            console.log('Initializing GRBL Web Control Pro...');
+            console.log('🚀 Initializing GRBL Web Control Pro v3.0...');
 
             // Create managers
             this.canvasManager = new CanvasManager(this);
@@ -536,13 +688,17 @@ window.grblApp = function() {
             const canvas = this.$refs.canvas;
             if (canvas) {
                 this.canvasManager.init(canvas);
+                console.log('✅ Canvas inicializado');
+            } else {
+                console.error('❌ Canvas element not found');
             }
 
             // Load libraries
             this.tools = await this.libraryManager.loadTools();
             this.materials = await this.libraryManager.loadMaterials();
+            console.log('✅ Libraries loaded:', this.tools.length, 'tools,', this.materials.length, 'materials');
 
-            console.log('✅ App initialized');
+            console.log('✅ App initialized successfully!');
         },
 
         // Connection
@@ -550,9 +706,13 @@ window.grblApp = function() {
             if (this.connected) {
                 await this.serialControl.disconnect();
                 this.connected = false;
+                this.addConsoleLine('Disconnected');
             } else {
                 const result = await this.serialControl.connect();
                 this.connected = result;
+                if (result) {
+                    this.addConsoleLine('✅ Connected to GRBL');
+                }
             }
         },
 
@@ -565,17 +725,21 @@ window.grblApp = function() {
             const file = event.target.files[0];
             if (!file) return;
 
+            console.log('📂 Loading SVG:', file.name);
+
             try {
                 await this.canvasManager.loadSVG(file);
                 this.svgLoaded = true;
+                this.addConsoleLine('✅ SVG cargado: ' + file.name);
 
-                // Auto fit view
+                // Auto fit view after a moment
                 setTimeout(() => {
                     this.canvasManager.fitView();
                 }, 100);
 
-                console.log('✅ SVG loaded');
             } catch (error) {
+                console.error('Error loading SVG:', error);
+                this.addConsoleLine('❌ Error loading SVG: ' + error.message);
                 alert('Error loading SVG: ' + error.message);
             }
         },
@@ -584,9 +748,11 @@ window.grblApp = function() {
         selectTool(tool) {
             this.currentTool = tool;
             if (this.canvasManager && this.canvasManager.fabricCanvas) {
-                // Update cursor based on tool
                 switch(tool) {
-                    case 'pan':
+                    case 'move':
+                        this.canvasManager.fabricCanvas.defaultCursor = 'move';
+                        break;
+                    case 'rotate':
                         this.canvasManager.fabricCanvas.defaultCursor = 'grab';
                         break;
                     default:
@@ -616,6 +782,9 @@ window.grblApp = function() {
         resetOrigin() {
             if (this.canvasManager) {
                 this.canvasManager.resetOrigin();
+                this.svgPosition = 'X: 0, Y: 0';
+                this.svgScale = '100%';
+                this.svgRotation = '0°';
             }
         },
 
@@ -631,7 +800,12 @@ window.grblApp = function() {
             this.gcodeLines = this.gcode.split('\n').length;
             this.gcodeGenerated = true;
 
-            console.log('✅ G-code generated');
+            const est = this.gcodeGenerator.calculateEstimates(this.gcode, this.config);
+            this.estimates.time = est.time.toFixed(0) + 's';
+            this.estimates.distance = est.distance.toFixed(2) + ' mm';
+
+            this.addConsoleLine('✅ G-code generated: ' + this.gcodeLines + ' lines');
+            this.currentTab = 'gcode';
         },
 
         downloadGCode() {
@@ -644,11 +818,13 @@ window.grblApp = function() {
             a.download = 'output.gcode';
             a.click();
             URL.revokeObjectURL(url);
+
+            this.addConsoleLine('✅ G-code downloaded');
         },
 
         sendToGRBL() {
             if (!this.connected || !this.gcodeGenerated) return;
-            alert('Función en desarrollo');
+            alert('Send to GRBL - En desarrollo');
         },
 
         // Commands
@@ -659,12 +835,15 @@ window.grblApp = function() {
         },
 
         reset() {
-            this.sendCommand('\x18'); // Ctrl-X
+            if (confirm('¿Reset GRBL?')) {
+                this.sendCommand('\x18');
+            }
         },
 
         emergencyStop() {
-            if (confirm('¿Stop inmediato?')) {
+            if (confirm('🛑 ¿STOP INMEDIATO?')) {
                 this.sendCommand('!');
+                this.addConsoleLine('🛑 EMERGENCY STOP');
             }
         },
 
@@ -686,16 +865,18 @@ window.grblApp = function() {
         },
 
         addConsoleLine(line) {
-            this.consoleLines.push(line);
-            if (this.consoleLines.length > 100) {
+            const timestamp = new Date().toLocaleTimeString();
+            this.consoleLines.push(`[${timestamp}] ${line}`);
+
+            if (this.consoleLines.length > 200) {
                 this.consoleLines.shift();
             }
 
             // Auto scroll
             this.$nextTick(() => {
-                const console = this.$refs.consoleOutput;
-                if (console) {
-                    console.scrollTop = console.scrollHeight;
+                const el = this.$refs.consoleOutput;
+                if (el) {
+                    el.scrollTop = el.scrollHeight;
                 }
             });
         },
@@ -706,23 +887,40 @@ window.grblApp = function() {
 
         // Settings
         applyToolSettings() {
-            // TODO
+            const tool = this.tools.find(t => t.name === this.selectedTool);
+            if (tool) {
+                this.config.toolDiameter = tool.diameter;
+                this.config.feedRate = tool.feedRate;
+                this.config.spindleRPM = tool.rpm;
+                this.addConsoleLine('✅ Tool applied: ' + tool.name);
+            }
         },
 
         applyMaterialSettings() {
-            // TODO
+            const mat = this.materials.find(m => m.name === this.selectedMaterial);
+            if (mat) {
+                this.config.feedRate = mat.feedRate;
+                this.config.spindleRPM = mat.rpm;
+                this.config.depthStep = mat.depthPerPass;
+                this.addConsoleLine('✅ Material applied: ' + mat.name);
+            }
         },
 
         updateConfigVisibility() {
-            // TODO
+            // Auto handled by Alpine
         },
 
         updateTransformInfo(transform) {
             this.svgPosition = `X: ${transform.x.toFixed(1)}, Y: ${transform.y.toFixed(1)}`;
             this.svgScale = `${(transform.scale * 100).toFixed(0)}%`;
             this.svgRotation = `${transform.rotation.toFixed(0)}°`;
+        },
+
+        openModal(modalId) {
+            console.log('Opening modal:', modalId);
+            alert('Modal ' + modalId + ' - En desarrollo');
         }
     };
 };
 
-console.log('✅ App bundle loaded');
+console.log('✅ App bundle loaded - ARREGLADO v3.0.3');
