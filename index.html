@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GRBL Web Control Pro v3.0</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        purple: {
+                            dark: '#2D1B69',
+                            medium: '#5B4B9F',
+                            light: '#7B6BB8',
+                            pale: '#B5A8D6',
+                            'ultra-pale': '#E8E4F3',
+                            bg: '#F5F3FA'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Fabric.js for canvas manipulation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-purple-bg">
+    <div x-data="grblApp()" class="flex h-screen overflow-hidden">
+        
+        <!-- Left Sidebar -->
+        <aside class="w-72 bg-white border-r border-gray-200 flex flex-col">
+            <!-- Logo & GitHub -->
+            <div class="bg-purple-dark text-white p-5">
+                <div class="flex items-center justify-between mb-2">
+                    <h1 class="text-xl font-bold">GRBL Control Pro</h1>
+                    <span class="text-xs bg-purple-medium px-2 py-1 rounded">v3.0</span>
+                </div>
+                <a href="https://github.com/makerspace-lab/grbl-web-control-pro" 
+                   target="_blank"
+                   class="flex items-center gap-2 text-xs text-purple-pale hover:text-white transition">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                    </svg>
+                    <span>GitHub</span>
+                </a>
+            </div>
+
+            <!-- Connection Status -->
+            <div class="p-5 border-b border-gray-200">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="flex items-center gap-2">
+                        <div :class="connected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'" 
+                             class="w-3 h-3 rounded-full"></div>
+                        <span class="text-sm font-medium" x-text="connected ? 'Conectado' : 'Desconectado'"></span>
+                    </div>
+                </div>
+                <button @click="toggleConnection" 
+                        :class="connected ? 'bg-red-500 hover:bg-red-600' : 'bg-purple-medium hover:bg-purple-dark'"
+                        class="w-full text-white px-4 py-2 rounded-lg font-medium transition">
+                    <span x-text="connected ? 'Desconectar' : 'Conectar'"></span>
+                </button>
+                <select class="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                    <option value="115200">115200</option>
+                    <option value="9600">9600</option>
+                </select>
+            </div>
+
+            <!-- Machine State -->
+            <div x-show="connected" class="p-5 border-b border-gray-200">
+                <h3 class="text-xs font-semibold text-purple-dark mb-3 uppercase tracking-wider">Estado Máquina</h3>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">Estado:</span>
+                        <span class="px-2 py-1 bg-purple-ultra-pale text-purple-dark rounded text-xs font-medium"
+                              x-text="machineState"></span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">Feed:</span>
+                        <span x-text="feedOverride + '%'"></span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">Spindle:</span>
+                        <span x-text="spindleOverride + '%'"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Position Display -->
+            <div x-show="connected" class="p-5 border-b border-gray-200">
+                <h3 class="text-xs font-semibold text-purple-dark mb-3 uppercase tracking-wider">Posición</h3>
+                <div class="space-y-2">
+                    <template x-for="axis in ['X', 'Y', 'Z']" :key="axis">
+                        <div class="flex justify-between items-center bg-purple-ultra-pale rounded-lg p-2">
+                            <span class="font-medium text-sm" x-text="axis + ':'"></span>
+                            <span class="font-mono text-purple-medium font-semibold" x-text="position[axis.toLowerCase()]"></span>
+                        </div>
+                    </template>
+                </div>
+                <button @click="togglePosMode" class="w-full mt-3 text-xs bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded transition">
+                    <span x-text="posMode"></span>
+                </button>
+            </div>
+
+            <!-- Quick Controls -->
+            <div x-show="connected" class="p-5 border-b border-gray-200">
+                <h3 class="text-xs font-semibold text-purple-dark mb-3 uppercase tracking-wider">Control Rápido</h3>
+                <div class="grid grid-cols-4 gap-2">
+                    <button @click="sendCommand('$H')" 
+                            class="aspect-square bg-purple-ultra-pale hover:bg-purple-pale rounded-lg transition flex items-center justify-center text-2xl"
+                            title="Home">🏠</button>
+                    <button @click="sendCommand('$X')" 
+                            class="aspect-square bg-purple-ultra-pale hover:bg-purple-pale rounded-lg transition flex items-center justify-center text-2xl"
+                            title="Unlock">🔓</button>
+                    <button @click="reset" 
+                            class="aspect-square bg-red-100 hover:bg-red-200 rounded-lg transition flex items-center justify-center text-2xl"
+                            title="Reset">⚠️</button>
+                    <button @click="emergencyStop" 
+                            class="aspect-square bg-red-500 hover:bg-red-600 text-white rounded-lg transition flex items-center justify-center text-2xl"
+                            title="Stop">⏹️</button>
+                </div>
+            </div>
+
+            <!-- Workspace Offset -->
+            <div x-show="connected" class="p-5 flex-1 overflow-auto">
+                <h3 class="text-xs font-semibold text-purple-dark mb-3 uppercase tracking-wider">Offset Trabajo</h3>
+                <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-2"
+                        @change="sendCommand($event.target.value)">
+                    <option value="G54">G54 (WCS 1)</option>
+                    <option value="G55">G55 (WCS 2)</option>
+                    <option value="G56">G56 (WCS 3)</option>
+                    <option value="G57">G57 (WCS 4)</option>
+                    <option value="G58">G58 (WCS 5)</option>
+                    <option value="G59">G59 (WCS 6)</option>
+                </select>
+                <div class="space-y-2">
+                    <button @click="sendCommand('G92 X0 Y0 Z0')" 
+                            class="w-full text-xs bg-purple-medium hover:bg-purple-dark text-white px-3 py-2 rounded-lg transition">
+                        Set Zero (G92)
+                    </button>
+                    <button @click="sendCommand('G92.1')" 
+                            class="w-full text-xs bg-gray-200 hover:bg-gray-300 px-3 py-2 rounded-lg transition">
+                        Clear (G92.1)
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col overflow-hidden">
+            
+            <!-- Top Toolbar -->
+            <div class="bg-white border-b border-gray-200 px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <button @click="loadSVG" 
+                                class="flex items-center gap-2 bg-purple-medium hover:bg-purple-dark text-white px-4 py-2 rounded-lg transition">
+                            <span>📁</span>
+                            <span>Cargar SVG</span>
+                        </button>
+                        <input type="file" accept=".svg" class="hidden" x-ref="svgInput" @change="handleSVGUpload">
+                        
+                        <button @click="generateGCode" 
+                                :disabled="!svgLoaded"
+                                :class="svgLoaded ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-300 cursor-not-allowed'"
+                                class="flex items-center gap-2 text-white px-4 py-2 rounded-lg transition">
+                            <span>⚙️</span>
+                            <span>Generar G-code</span>
+                        </button>
+                        
+                        <button @click="downloadGCode" 
+                                :disabled="!gcodeGenerated"
+                                :class="gcodeGenerated ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-300 cursor-not-allowed'"
+                                class="flex items-center gap-2 text-white px-4 py-2 rounded-lg transition">
+                            <span>💾</span>
+                            <span>Descargar</span>
+                        </button>
+                        
+                        <button @click="sendToGRBL" 
+                                :disabled="!connected || !gcodeGenerated"
+                                :class="connected && gcodeGenerated ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-300 cursor-not-allowed'"
+                                class="flex items-center gap-2 text-white px-4 py-2 rounded-lg transition">
+                            <span>▶️</span>
+                            <span>Enviar</span>
+                        </button>
+                    </div>
+                    
+                    <div class="flex items-center gap-3">
+                        <button @click="openModal('grblSettings')"
+                                class="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
+                            <span>⚙️</span>
+                            <span>Config GRBL</span>
+                        </button>
+                        <button @click="openModal('toolsLibrary')"
+                                class="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
+                            <span>🔧</span>
+                            <span>Herramientas</span>
+                        </button>
+                        <button @click="openModal('materialsLibrary')"
+                                class="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
+                            <span>📦</span>
+                            <span>Materiales</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Workspace Container -->
+            <div class="flex-1 flex overflow-hidden">
+                
+                <!-- Canvas Panel -->
+                <div class="flex-1 flex flex-col bg-purple-bg">
+                    
+                    <!-- Canvas Toolbar -->
+                    <div class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <button @click="selectTool('select')" 
+                                    :class="currentTool === 'select' ? 'bg-purple-medium text-white' : 'bg-gray-100 hover:bg-gray-200'"
+                                    class="px-3 py-2 rounded-lg transition text-sm">
+                                ↖️ Seleccionar
+                            </button>
+                            <button @click="selectTool('move')" 
+                                    :class="currentTool === 'move' ? 'bg-purple-medium text-white' : 'bg-gray-100 hover:bg-gray-200'"
+                                    class="px-3 py-2 rounded-lg transition text-sm">
+                                ✋ Mover
+                            </button>
+                            <button @click="selectTool('scale')" 
+                                    :class="currentTool === 'scale' ? 'bg-purple-medium text-white' : 'bg-gray-100 hover:bg-gray-200'"
+                                    class="px-3 py-2 rounded-lg transition text-sm">
+                                ↔️ Escalar
+                            </button>
+                            <button @click="selectTool('rotate')" 
+                                    :class="currentTool === 'rotate' ? 'bg-purple-medium text-white' : 'bg-gray-100 hover:bg-gray-200'"
+                                    class="px-3 py-2 rounded-lg transition text-sm">
+                                🔄 Rotar
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-center gap-4 text-sm text-gray-600">
+                            <span>Área: <span x-text="workAreaSize"></span> mm</span>
+                            <button @click="openModal('workArea')" class="hover:text-purple-medium">✏️</button>
+                        </div>
+                        
+                        <div class="flex items-center gap-2">
+                            <button @click="zoomIn" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition text-sm">
+                                🔍+
+                            </button>
+                            <button @click="zoomOut" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition text-sm">
+                                🔍-
+                            </button>
+                            <button @click="fitView" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition text-sm">
+                                ⊡
+                            </button>
+                            <button @click="resetOrigin" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition text-sm">
+                                📍 Origen
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Canvas -->
+                    <div class="flex-1 p-4 relative">
+                        <canvas x-ref="canvas" class="w-full h-full rounded-lg shadow-lg bg-white"></canvas>
+                    </div>
+
+                    <!-- Canvas Footer -->
+                    <div class="bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-between text-sm text-gray-600">
+                        <div class="flex items-center gap-6">
+                            <span>Posición: <span x-text="svgPosition"></span></span>
+                            <span>Escala: <span x-text="svgScale"></span></span>
+                            <span>Rotación: <span x-text="svgRotation"></span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel -->
+                <div class="w-96 bg-white border-l border-gray-200 flex flex-col">
+                    
+                    <!-- Tabs -->
+                    <div class="flex border-b border-gray-200 bg-gray-50">
+                        <template x-for="tab in tabs" :key="tab.id">
+                            <button @click="currentTab = tab.id"
+                                    :class="currentTab === tab.id ? 'border-b-2 border-purple-medium bg-white font-semibold' : 'text-gray-600'"
+                                    class="flex-1 px-4 py-3 text-sm transition"
+                                    x-text="tab.icon + ' ' + tab.name">
+                            </button>
+                        </template>
+                    </div>
+
+                    <!-- Tab Content -->
+                    <div class="flex-1 overflow-y-auto p-6">
+                        
+                        <!-- Config Tab -->
+                        <div x-show="currentTab === 'config'" class="space-y-6">
+                            <div>
+                                <h3 class="text-sm font-semibold text-purple-dark mb-3">Tipo de Operación</h3>
+                                <select x-model="operationType" 
+                                        @change="updateConfigVisibility"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                                    <option value="cnc">Corte CNC</option>
+                                    <option value="laser">Láser</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <h3 class="text-sm font-semibold text-purple-dark mb-3">Herramienta</h3>
+                                <select x-model="selectedTool" 
+                                        @change="applyToolSettings"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    <option value="">Seleccionar...</option>
+                                    <template x-for="tool in tools" :key="tool.name">
+                                        <option :value="tool.name" x-text="tool.name + ' (' + tool.diameter + 'mm)'"></option>
+                                    </template>
+                                </select>
+                            </div>
+
+                            <div>
+                                <h3 class="text-sm font-semibold text-purple-dark mb-3">Material</h3>
+                                <select x-model="selectedMaterial" 
+                                        @change="applyMaterialSettings"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    <option value="">Seleccionar...</option>
+                                    <template x-for="mat in materials" :key="mat.name">
+                                        <option :value="mat.name" x-text="mat.name + ' (' + mat.thickness + 'mm)'"></option>
+                                    </template>
+                                </select>
+                            </div>
+
+                            <div x-show="operationType === 'cnc'">
+                                <h3 class="text-sm font-semibold text-purple-dark mb-3">Parámetros CNC</h3>
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="text-xs text-gray-600">Profundidad total (mm)</label>
+                                        <input type="number" x-model="config.depth" step="0.1" 
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg mt-1">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-600">Profundidad por pasada (mm)</label>
+                                        <input type="number" x-model="config.depthStep" step="0.1" 
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg mt-1">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-600">Diámetro herramienta (mm)</label>
+                                        <input type="number" x-model="config.toolDiameter" step="0.001" 
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg mt-1">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-600">Compensación</label>
+                                        <select x-model="config.compensation" 
+                                                class="w-full px-3 py-2 border border-gray-300 rounded-lg mt-1">
+                                            <option value="center">Centro (por el borde)</option>
+                                            <option value="inside">Interior (dentro)</option>
+                                            <option value="outside">Exterior (fuera)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h3 class="text-sm font-semibold text-purple-dark mb-3">Velocidades</h3>
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="text-xs text-gray-600">Feed rate (mm/min)</label>
+                                        <input type="number" x-model="config.feedRate" step="50" 
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg mt-1">
+                                    </div>
+                                    <div x-show="operationType === 'cnc'">
+                                        <label class="text-xs text-gray-600">Plunge rate (mm/min)</label>
+                                        <input type="number" x-model="config.plungeRate" step="50" 
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg mt-1">
+                                    </div>
+                                    <div x-show="operationType === 'cnc'">
+                                        <label class="text-xs text-gray-600">Spindle RPM</label>
+                                        <input type="number" x-model="config.spindleRPM" step="1000" 
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg mt-1">
+                                    </div>
+                                    <div x-show="operationType === 'laser'">
+                                        <label class="text-xs text-gray-600">Potencia láser (%)</label>
+                                        <input type="number" x-model="config.laserPower" min="0" max="100" 
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg mt-1">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-purple-ultra-pale rounded-lg p-4">
+                                <h3 class="text-sm font-semibold text-purple-dark mb-2">Estimaciones</h3>
+                                <div class="space-y-2 text-sm">
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600">Tiempo:</span>
+                                        <span class="font-semibold text-purple-medium" x-text="estimates.time"></span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600">Distancia:</span>
+                                        <span class="font-semibold text-purple-medium" x-text="estimates.distance"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Jog Tab -->
+                        <div x-show="currentTab === 'jog'" class="space-y-6">
+                            <div>
+                                <h3 class="text-sm font-semibold text-purple-dark mb-3">Distancia</h3>
+                                <div class="flex gap-2">
+                                    <template x-for="dist in [0.1, 1, 10, 100]" :key="dist">
+                                        <button @click="jogDistance = dist"
+                                                :class="jogDistance === dist ? 'bg-purple-medium text-white' : 'bg-gray-100'"
+                                                class="flex-1 py-2 rounded-lg font-medium text-sm transition"
+                                                x-text="dist"></button>
+                                    </template>
+                                </div>
+                                <span class="text-xs text-gray-500 mt-1">mm</span>
+                            </div>
+
+                            <div>
+                                <h3 class="text-sm font-semibold text-purple-dark mb-3">Velocidad</h3>
+                                <input type="range" x-model="jogSpeed" min="100" max="5000" step="100" class="w-full">
+                                <div class="flex justify-between text-xs text-gray-600 mt-1">
+                                    <span>100</span>
+                                    <span x-text="jogSpeed + ' mm/min'" class="font-semibold"></span>
+                                    <span>5000</span>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="grid grid-cols-3 gap-2 mb-2">
+                                    <div></div>
+                                    <button @click="jog('Y', jogDistance)" 
+                                            class="aspect-square bg-purple-ultra-pale hover:bg-purple-pale rounded-lg flex items-center justify-center text-2xl transition">
+                                        ▲
+                                    </button>
+                                    <div></div>
+                                    <button @click="jog('X', -jogDistance)" 
+                                            class="aspect-square bg-purple-ultra-pale hover:bg-purple-pale rounded-lg flex items-center justify-center text-2xl transition">
+                                        ◄
+                                    </button>
+                                    <button @click="sendCommand('$H')" 
+                                            class="aspect-square bg-purple-medium text-white hover:bg-purple-dark rounded-lg flex items-center justify-center text-2xl transition">
+                                        ⌂
+                                    </button>
+                                    <button @click="jog('X', jogDistance)" 
+                                            class="aspect-square bg-purple-ultra-pale hover:bg-purple-pale rounded-lg flex items-center justify-center text-2xl transition">
+                                        ►
+                                    </button>
+                                    <div></div>
+                                    <button @click="jog('Y', -jogDistance)" 
+                                            class="aspect-square bg-purple-ultra-pale hover:bg-purple-pale rounded-lg flex items-center justify-center text-2xl transition">
+                                        ▼
+                                    </button>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-2 mt-4">
+                                    <button @click="jog('Z', jogDistance)" 
+                                            class="bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg font-medium transition">
+                                        Z ▲
+                                    </button>
+                                    <button @click="jog('Z', -jogDistance)" 
+                                            class="bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg font-medium transition">
+                                        Z ▼
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="space-y-2">
+                                <button @click="sendCommand('G0 X0 Y0 Z0')" 
+                                        class="w-full bg-gray-200 hover:bg-gray-300 py-2 rounded-lg text-sm transition">
+                                    Ir a Origen
+                                </button>
+                                <button @click="sendCommand('G38.2 Z-20 F100')" 
+                                        class="w-full bg-gray-200 hover:bg-gray-300 py-2 rounded-lg text-sm transition">
+                                    Probe Z
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- G-code Tab -->
+                        <div x-show="currentTab === 'gcode'" class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-sm font-semibold text-purple-dark">G-code Generado</h3>
+                                <span class="text-xs text-gray-600" x-text="gcodeLines + ' líneas'"></span>
+                            </div>
+                            <textarea x-model="gcode" 
+                                      readonly
+                                      class="w-full h-96 px-3 py-2 bg-purple-bg border border-gray-300 rounded-lg font-mono text-xs"
+                                      placeholder="El G-code aparecerá aquí..."></textarea>
+                            
+                            <div x-show="sending" class="space-y-2">
+                                <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                    <div class="bg-green-500 h-2 transition-all duration-300" 
+                                         :style="'width: ' + sendProgress + '%'"></div>
+                                </div>
+                                <p class="text-sm text-center text-gray-600" x-text="sendProgress.toFixed(1) + '%'"></p>
+                            </div>
+                        </div>
+
+                        <!-- Console Tab -->
+                        <div x-show="currentTab === 'console'" class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-sm font-semibold text-purple-dark">Consola GRBL</h3>
+                                <button @click="clearConsole" class="text-xs text-gray-600 hover:text-purple-medium">
+                                    Limpiar
+                                </button>
+                            </div>
+                            <div x-ref="consoleOutput" 
+                                 class="h-96 bg-gray-900 rounded-lg p-3 overflow-y-auto font-mono text-xs text-green-400">
+                                <template x-for="(line, index) in consoleLines" :key="index">
+                                    <div x-text="line"></div>
+                                </template>
+                            </div>
+                            <div class="flex gap-2">
+                                <input type="text" 
+                                       x-model="consoleInput"
+                                       @keyup.enter="sendConsoleCommand"
+                                       :disabled="!connected"
+                                       class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                       placeholder="Comando manual...">
+                                <button @click="sendConsoleCommand" 
+                                        :disabled="!connected"
+                                        class="bg-purple-medium hover:bg-purple-dark text-white px-4 py-2 rounded-lg text-sm transition disabled:bg-gray-300">
+                                    Enviar
+                                </button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals placeholders (implementar según necesidad) -->
+    
+    <!-- App Script - NO usar type="module" para compatibilidad con Alpine -->
+    <script src="js/app-bundle.js"></script>
+</body>
+</html>

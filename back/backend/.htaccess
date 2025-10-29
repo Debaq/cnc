@@ -1,0 +1,28 @@
+# Seguridad básica
+Options -Indexes
+
+# Proteger archivos de configuración
+<FilesMatch "\.(json)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Permitir acceso a la API
+<Files "api.php">
+    Allow from all
+</Files>
+
+# Headers de seguridad
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Cache control para archivos estáticos
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType application/javascript "access plus 1 week"
+    ExpiresByType text/css "access plus 1 week"
+    ExpiresByType image/svg+xml "access plus 1 week"
+</IfModule>
