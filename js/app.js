@@ -1,10 +1,7 @@
 // ============================================
 // GRBL Web Control Pro v3.0 - Main App
 // ============================================
-import { CanvasManager } from './canvas-manager.js';
-import { GCodeGenerator } from './gcode-generator.js';
-import { SerialControl } from './serial-control.js';
-import { LibraryManager } from './library-manager.js';
+
 
 // ============================================
 // ALPINE.JS APP

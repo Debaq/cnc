@@ -1,7 +1,7 @@
 // ============================================
 // LIBRARY MANAGER
 // ============================================
-export class LibraryManager {
+class LibraryManager {
     constructor(app) {
         this.app = app;
         this.tools = [];

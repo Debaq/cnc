@@ -1,7 +1,7 @@
 // ============================================
 // SERIAL CONTROL (Web Serial API)
 // ============================================
-export class SerialControl {
+class SerialControl {
     constructor(app) {
         this.app = app;
         this.port = null;

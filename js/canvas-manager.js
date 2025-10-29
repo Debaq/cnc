@@ -1,7 +1,7 @@
 // ============================================
 // CANVAS MANAGER (Fabric.js)
 // ============================================
-export class CanvasManager {
+class CanvasManager {
     constructor(app) {
         this.app = app;
         this.canvas = null;

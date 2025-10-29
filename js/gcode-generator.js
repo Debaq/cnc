@@ -1,7 +1,7 @@
 // ============================================
 // G-CODE GENERATOR
 // ============================================
-export class GCodeGenerator {
+class GCodeGenerator {
     constructor() {
         this.gcode = '';
     }
