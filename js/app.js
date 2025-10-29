@@ -1,26 +1,37 @@
+// ============================================
+// GRBL Web Control Pro v3.0 - Main App
+// ============================================
 import { CanvasManager } from './canvas-manager.js';
 import { GCodeGenerator } from './gcode-generator.js';
 import { SerialControl } from './serial-control.js';
 import { LibraryManager } from './library-manager.js';
 
-// Alpine.js App
+// ============================================
+// ALPINE.JS APP
+// ============================================
 window.grblApp = function() {
     return {
+        // Managers
+        canvasManager: null,
+        gcodeGenerator: null,
+        serialControl: null,
+        libraryManager: null,
+
         // State
         connected: false,
         svgLoaded: false,
         gcodeGenerated: false,
         sending: false,
-        
-        // Machine state
+
+        // Machine
         machineState: 'Idle',
         feedOverride: 100,
         spindleOverride: 100,
-        
+
         // Position
         position: { x: '0.000', y: '0.000', z: '0.000' },
         posMode: 'WPos',
-        
+
         // UI
         currentTab: 'config',
         currentTool: 'select',
@@ -30,17 +41,19 @@ window.grblApp = function() {
             { id: 'gcode', name: 'G-code', icon: '📝' },
             { id: 'console', name: 'Consola', icon: '💻' }
         ],
-        
-        // SVG Transform info
+
+        // SVG info
         svgPosition: 'X: 0, Y: 0',
         svgScale: '100%',
         svgRotation: '0°',
-        
-        // Work area
         workAreaSize: '400 x 400',
-        
-        // Operation config
+
+        // Config
         operationType: 'cnc',
+        selectedTool: '',
+        selectedMaterial: '',
+        tools: [],
+        materials: [],
         config: {
             depth: -3,
             depthStep: 1,
@@ -49,365 +62,270 @@ window.grblApp = function() {
             feedRate: 800,
             plungeRate: 400,
             spindleRPM: 10000,
-            laserPower: 80
+            laserPower: 60
         },
-        
-        // Libraries
-        tools: [],
-        materials: [],
-        selectedTool: '',
-        selectedMaterial: '',
-        
+
         // Jog
         jogDistance: 1,
         jogSpeed: 1000,
-        
+
         // G-code
         gcode: '',
         gcodeLines: 0,
         sendProgress: 0,
-        
+        estimates: { time: '-', distance: '-' },
+
         // Console
         consoleLines: [],
         consoleInput: '',
-        
-        // Estimates
-        estimates: {
-            time: '--',
-            distance: '--'
-        },
-        
-        // Managers
-        canvasManager: null,
-        gcodeGenerator: null,
-        serialControl: null,
-        libraryManager: null,
-        
-        // Features (para futuro)
-        features: {
-            preview3D: null,
-            arPreview: null,
-            webcam: null,
-            simulator: null,
-            nesting: null,
-            textToPath: null,
-            voiceControl: null,
-            heatMap: null
-        },
-        
-        // Initialization
-        init() {
-            console.log('🚀 GRBL Web Control Pro v3.0');
-            console.log('📦 Inicializando módulos...');
-            
-            // Initialize managers
+
+        // Init
+        async init() {
+            console.log('🚀 Initializing GRBL Web Control Pro v3.5...');
+
+            // Create managers
             this.canvasManager = new CanvasManager(this);
-            this.gcodeGenerator = new GCodeGenerator(this);
+            this.gcodeGenerator = new GCodeGenerator();
             this.serialControl = new SerialControl(this);
             this.libraryManager = new LibraryManager(this);
-            
-            // Setup canvas
-            this.$nextTick(() => {
-                this.canvasManager.init(this.$refs.canvas);
+
+            // Init canvas
+            const canvas = this.$refs.canvas;
+            if (canvas) {
+                this.canvasManager.init(canvas);
                 console.log('✅ Canvas inicializado');
-            });
-            
+            } else {
+                console.error('❌ Canvas element not found');
+            }
+
             // Load libraries
-            this.loadLibraries();
-            
-            console.log('✅ Aplicación lista!');
+            this.tools = await this.libraryManager.loadTools();
+            this.materials = await this.libraryManager.loadMaterials();
+            console.log('✅ Libraries loaded:', this.tools.length, 'tools,', this.materials.length, 'materials');
+
+            console.log('✅ App initialized successfully!');
         },
-        
-        // Libraries
-        async loadLibraries() {
-            try {
-                await this.libraryManager.loadTools();
-                await this.libraryManager.loadMaterials();
-                this.tools = this.libraryManager.tools;
-                this.materials = this.libraryManager.materials;
-                console.log('✅ Bibliotecas cargadas');
-            } catch (error) {
-                console.error('Error loading libraries:', error);
+
+        // Connection
+        async toggleConnection() {
+            if (this.connected) {
+                await this.serialControl.disconnect();
+                this.connected = false;
+                this.addConsoleLine('Disconnected');
+            } else {
+                const result = await this.serialControl.connect();
+                this.connected = result;
+                if (result) {
+                    this.addConsoleLine('✅ Connected to GRBL');
+                }
             }
         },
-        
-        applyToolSettings() {
-            const tool = this.tools.find(t => t.name === this.selectedTool);
-            if (tool) {
-                this.config.toolDiameter = tool.diameter;
-                this.config.feedRate = tool.feedRate;
-                this.config.spindleRPM = tool.rpm;
-                this.addConsoleLog(`✓ Herramienta aplicada: ${tool.name}`, 'success');
-            }
-        },
-        
-        applyMaterialSettings() {
-            const material = this.materials.find(m => m.name === this.selectedMaterial);
-            if (material) {
-                this.config.depthStep = material.depthPerPass;
-                this.config.feedRate = material.feedRate;
-                this.config.spindleRPM = material.rpm;
-                this.config.laserPower = material.laserPower;
-                this.addConsoleLog(`✓ Material aplicado: ${material.name}`, 'success');
-            }
-        },
-        
-        // SVG Operations
+
+        // SVG
         loadSVG() {
             this.$refs.svgInput.click();
         },
-        
+
         async handleSVGUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
-            
+
+            console.log('📂 Loading SVG:', file.name);
+
             try {
                 await this.canvasManager.loadSVG(file);
                 this.svgLoaded = true;
-                this.addConsoleLog('✓ SVG cargado correctamente', 'success');
+                this.addConsoleLine('✅ SVG cargado: ' + file.name);
+
+                // Auto fit view after a moment
+                setTimeout(() => {
+                    this.canvasManager.fitView();
+                }, 100);
+
             } catch (error) {
-                this.addConsoleLog('✗ Error al cargar SVG: ' + error.message, 'error');
+                console.error('Error loading SVG:', error);
+                this.addConsoleLine('❌ Error loading SVG: ' + error.message);
+                alert('Error loading SVG: ' + error.message);
             }
         },
-        
-        // Canvas Tools
+
+        // Tools
         selectTool(tool) {
             this.currentTool = tool;
-            this.canvasManager.setTool(tool);
+            if (this.canvasManager && this.canvasManager.fabricCanvas) {
+                switch(tool) {
+                    case 'move':
+                        this.canvasManager.fabricCanvas.defaultCursor = 'move';
+                        break;
+                    case 'rotate':
+                        this.canvasManager.fabricCanvas.defaultCursor = 'grab';
+                        break;
+                    default:
+                        this.canvasManager.fabricCanvas.defaultCursor = 'default';
+                }
+            }
         },
-        
+
         zoomIn() {
-            this.canvasManager.zoomIn();
+            if (this.canvasManager) {
+                this.canvasManager.zoomIn();
+            }
         },
-        
+
         zoomOut() {
-            this.canvasManager.zoomOut();
+            if (this.canvasManager) {
+                this.canvasManager.zoomOut();
+            }
         },
-        
+
         fitView() {
-            this.canvasManager.fitView();
+            if (this.canvasManager) {
+                this.canvasManager.fitView();
+            }
         },
-        
+
         resetOrigin() {
-            this.canvasManager.resetOrigin();
-            this.svgPosition = 'X: 0, Y: 0';
-            this.svgScale = '100%';
-            this.svgRotation = '0°';
+            if (this.canvasManager) {
+                this.canvasManager.resetOrigin();
+                this.svgPosition = 'X: 0, Y: 0';
+                this.svgScale = '100%';
+                this.svgRotation = '0°';
+            }
         },
-        
-        updateTransformInfo(transform) {
-            this.svgPosition = `X: ${transform.x.toFixed(1)}, Y: ${transform.y.toFixed(1)}`;
-            this.svgScale = `${(transform.scale * 100).toFixed(0)}%`;
-            this.svgRotation = `${transform.rotation.toFixed(1)}°`;
-        },
-        
-        // G-code Operations
-        async generateGCode() {
+
+        // G-code
+        generateGCode() {
             if (!this.svgLoaded) {
-                this.addConsoleLog('✗ No hay SVG cargado', 'error');
+                alert('Carga un SVG primero');
                 return;
             }
-            
-            try {
-                const paths = this.canvasManager.getPaths();
-                this.gcode = this.gcodeGenerator.generate(paths, this.config, this.operationType);
-                this.gcodeLines = this.gcode.split('\n').filter(l => l.trim()).length;
-                this.gcodeGenerated = true;
-                
-                // Calculate estimates
-                const est = this.gcodeGenerator.calculateEstimates(this.gcode, this.config);
-                this.estimates.time = this.formatTime(est.time);
-                this.estimates.distance = est.distance.toFixed(2) + ' mm';
-                
-                this.currentTab = 'gcode';
-                this.addConsoleLog(`✓ G-code generado: ${this.gcodeLines} líneas`, 'success');
-            } catch (error) {
-                this.addConsoleLog('✗ Error al generar G-code: ' + error.message, 'error');
-            }
+
+            const paths = this.canvasManager.getPaths();
+            this.gcode = this.gcodeGenerator.generate(paths, this.config, this.operationType);
+            this.gcodeLines = this.gcode.split('\n').length;
+            this.gcodeGenerated = true;
+
+            const est = this.gcodeGenerator.calculateEstimates(this.gcode, this.config);
+            this.estimates.time = est.time.toFixed(0) + 's';
+            this.estimates.distance = est.distance.toFixed(2) + ' mm';
+
+            this.addConsoleLine('✅ G-code generated: ' + this.gcodeLines + ' lines');
+            this.currentTab = 'gcode';
         },
-        
+
         downloadGCode() {
             if (!this.gcodeGenerated) return;
-            
+
             const blob = new Blob([this.gcode], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `gcode_${Date.now()}.gcode`;
+            a.download = 'output.gcode';
             a.click();
             URL.revokeObjectURL(url);
-            
-            this.addConsoleLog('✓ G-code descargado', 'success');
+
+            this.addConsoleLine('✅ G-code downloaded');
         },
-        
-        // Serial Operations
-        async toggleConnection() {
-            if (this.connected) {
-                await this.serialControl.disconnect();
-            } else {
-                try {
-                    await this.serialControl.connect();
-                } catch (error) {
-                    this.addConsoleLog('✗ Error de conexión: ' + error.message, 'error');
-                }
-            }
+
+        sendToGRBL() {
+            if (!this.connected || !this.gcodeGenerated) return;
+            alert('Send to GRBL - En desarrollo');
         },
-        
-        onSerialConnect() {
-            this.connected = true;
-            this.addConsoleLog('✓ Conectado a GRBL', 'success');
-        },
-        
-        onSerialDisconnect() {
-            this.connected = false;
-            this.addConsoleLog('✓ Desconectado', 'info');
-        },
-        
-        onSerialData(data) {
-            this.addConsoleLog(data, 'info');
-            
-            // Parse status
-            const statusMatch = data.match(/<([^|]+)\|/);
-            if (statusMatch) {
-                this.machineState = statusMatch[1];
-            }
-            
-            // Parse position
-            const posMatch = data.match(/WPos:([-\d.]+),([-\d.]+),([-\d.]+)|MPos:([-\d.]+),([-\d.]+),([-\d.]+)/);
-            if (posMatch) {
-                const x = posMatch[1] || posMatch[4];
-                const y = posMatch[2] || posMatch[5];
-                const z = posMatch[3] || posMatch[6];
-                this.position.x = parseFloat(x).toFixed(3);
-                this.position.y = parseFloat(y).toFixed(3);
-                this.position.z = parseFloat(z).toFixed(3);
-            }
-            
-            // Parse overrides
-            const ovMatch = data.match(/Ov:(\d+),(\d+),(\d+)/);
-            if (ovMatch) {
-                this.feedOverride = parseInt(ovMatch[1]);
-                this.spindleOverride = parseInt(ovMatch[3]);
-            }
-        },
-        
-        sendCommand(command) {
+
+        // Commands
+        sendCommand(cmd) {
             if (!this.connected) return;
-            this.serialControl.sendCommand(command);
-            this.addConsoleLog('> ' + command, 'info');
+            this.serialControl.sendCommand(cmd);
+            this.addConsoleLine('> ' + cmd);
         },
-        
+
         reset() {
-            if (confirm('¿Ejecutar soft reset?')) {
+            if (confirm('¿Reset GRBL?')) {
                 this.serialControl.reset();
             }
         },
-        
+
         emergencyStop() {
-            if (confirm('¿DETENER EMERGENCIA?')) {
+            if (confirm('🛑 ¿STOP INMEDIATO?')) {
                 this.serialControl.emergencyStop();
-                this.addConsoleLog('⚠️ EMERGENCIA - Detenido', 'error');
+                this.addConsoleLine('🛑 EMERGENCY STOP');
             }
         },
-        
-        async sendToGRBL() {
-            if (!this.connected || !this.gcodeGenerated) return;
-            
-            try {
-                this.sending = true;
-                this.sendProgress = 0;
-                this.currentTab = 'gcode';
-                
-                await this.serialControl.sendGCode(
-                    this.gcode,
-                    (progress) => {
-                        this.sendProgress = progress;
-                    }
-                );
-                
-                this.addConsoleLog('✓ G-code enviado completamente', 'success');
-            } catch (error) {
-                this.addConsoleLog('✗ Error al enviar: ' + error.message, 'error');
-            } finally {
-                this.sending = false;
-            }
+
+        togglePosMode() {
+            this.posMode = this.posMode === 'WPos' ? 'MPos' : 'WPos';
         },
-        
+
         // Jog
         jog(axis, distance) {
             if (!this.connected) return;
             this.serialControl.jog(axis, distance, this.jogSpeed);
         },
-        
-        togglePosMode() {
-            this.posMode = this.posMode === 'WPos' ? 'MPos' : 'WPos';
-        },
-        
+
         // Console
         sendConsoleCommand() {
-            if (!this.consoleInput.trim() || !this.connected) return;
+            if (!this.consoleInput.trim()) return;
             this.sendCommand(this.consoleInput);
             this.consoleInput = '';
         },
-        
-        addConsoleLog(message, type = 'info') {
+
+        addConsoleLine(line) {
             const timestamp = new Date().toLocaleTimeString();
-            const line = `[${timestamp}] ${message}`;
-            this.consoleLines.push(line);
-            
-            // Limit console lines
-            if (this.consoleLines.length > 500) {
+            this.consoleLines.push(`[${timestamp}] ${line}`);
+
+            if (this.consoleLines.length > 200) {
                 this.consoleLines.shift();
             }
-            
+
             // Auto scroll
             this.$nextTick(() => {
-                if (this.$refs.consoleOutput) {
-                    this.$refs.consoleOutput.scrollTop = this.$refs.consoleOutput.scrollHeight;
+                const el = this.$refs.consoleOutput;
+                if (el) {
+                    el.scrollTop = el.scrollHeight;
                 }
             });
         },
-        
+
         clearConsole() {
             this.consoleLines = [];
         },
-        
-        // Config visibility
-        updateConfigVisibility() {
-            // Alpine reactivity handles this automatically
+
+        // Settings
+        applyToolSettings() {
+            const tool = this.libraryManager.getTool(this.selectedTool);
+            if (tool) {
+                this.config.toolDiameter = tool.diameter;
+                this.config.feedRate = tool.feedRate;
+                this.config.spindleRPM = tool.rpm;
+                this.addConsoleLine('✅ Tool applied: ' + tool.name);
+            }
         },
-        
-        // Modals (simple implementation)
+
+        applyMaterialSettings() {
+            const mat = this.libraryManager.getMaterial(this.selectedMaterial);
+            if (mat) {
+                this.config.feedRate = mat.feedRate;
+                this.config.spindleRPM = mat.rpm;
+                this.config.depthStep = mat.depthPerPass;
+                this.addConsoleLine('✅ Material applied: ' + mat.name);
+            }
+        },
+
+        updateConfigVisibility() {
+            // Auto handled by Alpine
+        },
+
+        updateTransformInfo(transform) {
+            this.svgPosition = `X: ${transform.x.toFixed(1)}, Y: ${transform.y.toFixed(1)}`;
+            this.svgScale = `${(transform.scale * 100).toFixed(0)}%`;
+            this.svgRotation = `${transform.rotation.toFixed(0)}°`;
+        },
+
         openModal(modalId) {
             console.log('Opening modal:', modalId);
-            // TODO: Implement modals
-        },
-        
-        // Helpers
-        formatTime(seconds) {
-            const hours = Math.floor(seconds / 3600);
-            const minutes = Math.floor((seconds % 3600) / 60);
-            const secs = Math.floor(seconds % 60);
-            
-            if (hours > 0) {
-                return `${hours}h ${minutes}m`;
-            } else if (minutes > 0) {
-                return `${minutes}m ${secs}s`;
-            } else {
-                return `${secs}s`;
-            }
-        },
-        
-        // Feature loading (para futuro)
-        async loadFeature(featureName) {
-            try {
-                const module = await import(`./features/${featureName}.js`);
-                this.features[featureName] = new module.default(this);
-                await this.features[featureName].init();
-                console.log(`✅ Feature loaded: ${featureName}`);
-            } catch (error) {
-                console.error(`Error loading feature ${featureName}:`, error);
-            }
+            alert('Modal ' + modalId + ' - En desarrollo');
         }
-    }
-}
+    };
+};
+
+console.log('✅ GRBL Web Control Pro v3.0 - Modular version loaded');
