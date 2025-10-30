@@ -1,5 +1,5 @@
 // ============================================
-// CANVAS MANAGER (Fabric.js)
+// CANVAS MANAGER (Fabric.js) - MEJORADO
 // ============================================
 class CanvasManager {
     constructor(app) {
@@ -7,13 +7,14 @@ class CanvasManager {
         this.canvas = null;
         this.fabricCanvas = null;
         this.svgGroup = null;
+        this.layers = []; // Sistema de capas
 
         // Work area config (mm)
         this.workArea = { width: 400, height: 400 };
         this.pixelsPerMM = 2;
 
-        // Grid
-        this.gridSize = 10;
+        // Grid - MEJORADO: 20mm = 2cm
+        this.gridSize = 20; // 2cm por cuadro
         this.showGrid = true;
 
         // Origin marker
@@ -35,11 +36,11 @@ class CanvasManager {
         console.log('🎨 Initializing Canvas Manager');
         console.log('   Parent size:', width, 'x', height);
 
-        // Initialize Fabric.js canvas
+        // Initialize Fabric.js canvas - FONDO MÁS CLARO
         this.fabricCanvas = new fabric.Canvas(canvasElement, {
             width: width,
             height: height,
-            backgroundColor: '#F5F3FA',
+            backgroundColor: '#F0F0F0',
             selection: true,
             preserveObjectStacking: true
         });
@@ -73,9 +74,30 @@ class CanvasManager {
 
     resize() {
         const container = this.canvas.parentElement;
-        this.fabricCanvas.setWidth(container.clientWidth);
-        this.fabricCanvas.setHeight(container.clientHeight);
+        const newWidth = container.clientWidth;
+        const newHeight = container.clientHeight;
+
+        this.fabricCanvas.setWidth(newWidth);
+        this.fabricCanvas.setHeight(newHeight);
+
+        // Redraw grid and origin
+        this.clearGrid();
+        this.setupGrid();
+        this.setupOrigin();
+
         this.fabricCanvas.renderAll();
+    }
+
+    clearGrid() {
+        // Remove old grid and work area
+        const objects = this.fabricCanvas.getObjects();
+        objects.forEach(obj => {
+            if (obj.name === 'gridLine' || obj.name === 'workArea' ||
+                obj.name === 'xAxis' || obj.name === 'yAxis' ||
+                obj.name === 'origin') {
+                this.fabricCanvas.remove(obj);
+                }
+        });
     }
 
     setupGrid() {
@@ -88,68 +110,66 @@ class CanvasManager {
         console.log('   Canvas size:', this.fabricCanvas.width, 'x', this.fabricCanvas.height);
         console.log('   Work area:', workW, 'x', workH, 'pixels');
         console.log('   Center:', centerX, centerY);
+        console.log('   Grid spacing:', this.gridSize, 'mm (cada 2cm)');
 
-        // Work area rectangle - VISIBLE Y BLANCO
+        // Grid lines PRIMERO - MÁS VISIBLES
+        if (this.showGrid) {
+            const gridSpacing = this.gridSize * this.pixelsPerMM;
+            let lineCount = 0;
+
+            // Vertical lines - CADA 20MM (2CM)
+            for (let x = 0; x <= workW; x += gridSpacing) {
+                const isMainLine = (x % (100 * this.pixelsPerMM)) === 0; // Cada 10cm más grueso
+                const line = new fabric.Line([
+                    centerX - workW / 2 + x, centerY - workH / 2,
+                    centerX - workW / 2 + x, centerY + workH / 2
+                ], {
+                    stroke: isMainLine ? '#7B6BB8' : '#B5A8D6',
+                    strokeWidth: isMainLine ? 2 : 1,
+                    selectable: false,
+                    evented: false,
+                    name: 'gridLine'
+                });
+                this.fabricCanvas.add(line);
+                lineCount++;
+            }
+
+            // Horizontal lines - CADA 20MM (2CM)
+            for (let y = 0; y <= workH; y += gridSpacing) {
+                const isMainLine = (y % (100 * this.pixelsPerMM)) === 0; // Cada 10cm más grueso
+                const line = new fabric.Line([
+                    centerX - workW / 2, centerY - workH / 2 + y,
+                    centerX + workW / 2, centerY - workH / 2 + y
+                ], {
+                    stroke: isMainLine ? '#7B6BB8' : '#B5A8D6',
+                    strokeWidth: isMainLine ? 2 : 1,
+                    selectable: false,
+                    evented: false,
+                    name: 'gridLine'
+                });
+                this.fabricCanvas.add(line);
+                lineCount++;
+            }
+
+            console.log('   ✅ Grid lines added:', lineCount, '(spacing: 20mm = 2cm)');
+        }
+
+        // Work area rectangle DESPUÉS - BORDE MÁS FINO Y ELEGANTE
         const workRect = new fabric.Rect({
             left: centerX - workW / 2,
             top: centerY - workH / 2,
             width: workW,
             height: workH,
-            fill: '#FFFFFF',
-            stroke: '#5B4B9F',
-            strokeWidth: 3,
-            selectable: false,
-            evented: false,
-            name: 'workArea'
+            fill: 'rgba(255, 255, 255, 0.7)', // Semi transparente para ver el grid
+                                         stroke: '#5B4B9F',
+                                         strokeWidth: 3,
+                                         selectable: false,
+                                         evented: false,
+                                         name: 'workArea'
         });
 
         this.fabricCanvas.add(workRect);
-        this.fabricCanvas.sendToBack(workRect);
         console.log('   ✅ Work area rect added');
-
-        // Grid lines - MÁS VISIBLES
-        if (this.showGrid) {
-            const gridSpacing = this.gridSize * this.pixelsPerMM;
-            let lineCount = 0;
-
-            // Vertical lines
-            for (let x = 0; x <= workW; x += gridSpacing) {
-                const isMainLine = (x % (50 * this.pixelsPerMM)) === 0;
-                const line = new fabric.Line([
-                    centerX - workW / 2 + x, centerY - workH / 2,
-                    centerX - workW / 2 + x, centerY + workH / 2
-                ], {
-                    stroke: isMainLine ? 'rgba(91, 75, 159, 0.5)' : 'rgba(181, 168, 214, 0.3)',
-                                             strokeWidth: isMainLine ? 1.5 : 0.5,
-                                             selectable: false,
-                                             evented: false,
-                                             name: 'gridLine'
-                });
-                this.fabricCanvas.add(line);
-                this.fabricCanvas.sendToBack(line);
-                lineCount++;
-            }
-
-            // Horizontal lines
-            for (let y = 0; y <= workH; y += gridSpacing) {
-                const isMainLine = (y % (50 * this.pixelsPerMM)) === 0;
-                const line = new fabric.Line([
-                    centerX - workW / 2, centerY - workH / 2 + y,
-                    centerX + workW / 2, centerY - workH / 2 + y
-                ], {
-                    stroke: isMainLine ? 'rgba(91, 75, 159, 0.5)' : 'rgba(181, 168, 214, 0.3)',
-                                             strokeWidth: isMainLine ? 1.5 : 0.5,
-                                             selectable: false,
-                                             evented: false,
-                                             name: 'gridLine'
-                });
-                this.fabricCanvas.add(line);
-                this.fabricCanvas.sendToBack(line);
-                lineCount++;
-            }
-
-            console.log('   ✅ Grid lines added:', lineCount);
-        }
     }
 
     setupOrigin() {
@@ -164,57 +184,57 @@ class CanvasManager {
 
         console.log('📍 Setting up origin at:', originX.toFixed(1), originY.toFixed(1));
 
-        const axisLength = 50;
+        const axisLength = 40;
 
-        // X axis (red)
+        // X axis (red) - MÁS FINO
         const xAxis = new fabric.Line([originX, originY, originX + axisLength, originY], {
             stroke: '#FF0000',
-            strokeWidth: 5,
+            strokeWidth: 3,
             selectable: false,
             evented: false,
             name: 'xAxis'
         });
 
-        // Y axis (green)
+        // Y axis (green) - MÁS FINO
         const yAxis = new fabric.Line([originX, originY, originX, originY - axisLength], {
             stroke: '#00FF00',
-            strokeWidth: 5,
+            strokeWidth: 3,
             selectable: false,
             evented: false,
             name: 'yAxis'
         });
 
-        // Origin dot
+        // Origin dot - MÁS PEQUEÑO
         const origin = new fabric.Circle({
-            left: originX - 10,
-            top: originY - 10,
-            radius: 10,
+            left: originX - 6,
+            top: originY - 6,
+            radius: 6,
             fill: '#FFD700',
             stroke: '#2D1B69',
-            strokeWidth: 3,
+            strokeWidth: 2,
             selectable: false,
             evented: false,
             name: 'origin'
         });
 
-        // Arrow on X (triangle)
+        // Arrow on X (triangle) - MÁS PEQUEÑO
         const arrowX = new fabric.Triangle({
-            left: originX + axisLength - 5,
-            top: originY - 5,
-            width: 10,
-            height: 10,
+            left: originX + axisLength - 4,
+            top: originY - 4,
+            width: 8,
+            height: 8,
             fill: '#FF0000',
             angle: 90,
             selectable: false,
             evented: false
         });
 
-        // Arrow on Y (triangle)
+        // Arrow on Y (triangle) - MÁS PEQUEÑO
         const arrowY = new fabric.Triangle({
-            left: originX - 5,
-            top: originY - axisLength - 5,
-            width: 10,
-            height: 10,
+            left: originX - 4,
+            top: originY - axisLength - 4,
+            width: 8,
+            height: 8,
             fill: '#00FF00',
             angle: 0,
             selectable: false,
@@ -348,6 +368,31 @@ class CanvasManager {
         this.fabricCanvas.renderAll();
     }
 
+    // NUEVA FUNCIÓN: Cambiar área de trabajo
+    setWorkArea(width, height) {
+        this.workArea.width = width;
+        this.workArea.height = height;
+
+        // Recalcular pixelsPerMM si es necesario
+        const workAreaPx = Math.max(width, height) * this.pixelsPerMM;
+        const minDimension = Math.min(this.fabricCanvas.width, this.fabricCanvas.height);
+
+        if (workAreaPx > minDimension * 0.9) {
+            this.pixelsPerMM = (minDimension * 0.8) / Math.max(width, height);
+        }
+
+        // Redibujar todo
+        this.clearGrid();
+        this.setupGrid();
+        this.setupOrigin();
+        this.fabricCanvas.renderAll();
+
+        // Actualizar UI
+        this.app.workAreaSize = `${width} x ${height}`;
+
+        console.log('✅ Work area changed to:', width, 'x', height, 'mm');
+    }
+
     async loadSVG(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -368,18 +413,18 @@ class CanvasManager {
                         this.fabricCanvas.remove(this.svgGroup);
                     }
 
-                    // Change color of all objects BEFORE grouping
+                    // Change color of all objects BEFORE grouping - MÁS FINO
                     objects.forEach(obj => {
                         if (obj.stroke) {
                             obj.set('stroke', '#2D1B69');
-                            obj.set('strokeWidth', 2);
+                            obj.set('strokeWidth', 1.5); // MÁS FINO
                         }
                         if (!obj.stroke && obj.fill) {
                             obj.set('fill', '#5B4B9F');
                         }
                         if (!obj.stroke && !obj.fill) {
                             obj.set('stroke', '#2D1B69');
-                            obj.set('strokeWidth', 2);
+                            obj.set('strokeWidth', 1.5); // MÁS FINO
                         }
                     });
 

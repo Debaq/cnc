@@ -76,6 +76,10 @@ window.grblApp = function() {
         consoleLines: [],
         consoleInput: '',
 
+        // Modal Work Area
+        showWorkAreaModal: false,
+        tempWorkArea: { width: 400, height: 400 },
+
         // Init
         async init() {
             console.log('🚀 Initializing GRBL Web Control Pro v3.5...');
@@ -318,9 +322,35 @@ window.grblApp = function() {
             this.svgRotation = `${transform.rotation.toFixed(0)}°`;
         },
 
+        // NUEVO: Work Area Modal
+        openWorkAreaModal() {
+            this.tempWorkArea.width = this.canvasManager.workArea.width;
+            this.tempWorkArea.height = this.canvasManager.workArea.height;
+            this.showWorkAreaModal = true;
+        },
+
+        closeWorkAreaModal() {
+            this.showWorkAreaModal = false;
+        },
+
+        applyWorkArea() {
+            this.canvasManager.setWorkArea(this.tempWorkArea.width, this.tempWorkArea.height);
+            this.closeWorkAreaModal();
+            this.addConsoleLine(`✅ Work area set to ${this.tempWorkArea.width} x ${this.tempWorkArea.height} mm`);
+        },
+
+        setPresetWorkArea(width, height) {
+            this.tempWorkArea.width = width;
+            this.tempWorkArea.height = height;
+        },
+
         openModal(modalId) {
-            console.log('Opening modal:', modalId);
-            alert('Modal ' + modalId + ' - En desarrollo');
+            if (modalId === 'workArea') {
+                this.openWorkAreaModal();
+            } else {
+                console.log('Opening modal:', modalId);
+                alert('Modal ' + modalId + ' - En desarrollo');
+            }
         }
     };
 };
