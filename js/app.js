@@ -111,6 +111,27 @@ window.grblApp = function() {
         showGRBLHelpModal: false,
         currentGRBLHelp: {},
 
+
+        showToolsModal: false,
+toolsModalTab: 'cnc', // 'cnc', 'plotter', 'pencil'
+editingTool: null,
+toolForm: {
+    name: '',
+    type: 'endmill',
+    diameter: 3.175,
+    angle: 0,
+    feedRate: 800,
+    plungeRate: 400,
+    rpm: 12000,
+    pressure: 15,
+    speed: 100,
+    thickness: 0.5,
+    color: '#000000',
+    notes: ''
+},
+authPassword: '',
+toolsStatus: null,
+
         // Init
         async init() {
             console.log('🚀 Initializing GRBL Web Control Pro v3.5...');
@@ -622,6 +643,7 @@ window.grblApp = function() {
                 visible: true,
                 locked: false,
                 expanded: false,
+                showConfig: false, // NUEVO
                 fabricObject: svgGroup,
                 config: null, // null = hereda global
                 children: [] // paths internos si se desglosa
@@ -814,6 +836,7 @@ window.grblApp = function() {
                     name: this.getDrawingName(type),
                     visible: true,
                     locked: false,
+                    showConfig: false, // NUEVO
                     fabricObject: fabricObj,
                     config: null
                 };
@@ -835,6 +858,115 @@ window.grblApp = function() {
     this.canvasManager.fabricCanvas.renderAll();
     this.selectedElement = element;
 },
+openToolsModal() {
+    this.showToolsModal = true;
+    this.toolsModalTab = 'cnc';
+    this.toolsStatus = null;
+},
+
+closeToolsModal() {
+    this.showToolsModal = false;
+    this.editingTool = null;
+    this.resetToolForm();
+},
+
+resetToolForm() {
+    this.toolForm = {
+        name: '',
+        type: 'endmill',
+        diameter: 3.175,
+        angle: 0,
+        feedRate: 800,
+        plungeRate: 400,
+        rpm: 12000,
+        pressure: 15,
+        speed: 100,
+        thickness: 0.5,
+        color: '#000000',
+        notes: ''
+    };
+},
+
+editTool(tool) {
+    this.editingTool = tool;
+    this.toolForm = { ...tool };
+},
+
+async saveTool() {
+    if (!this.authPassword) {
+        this.toolsStatus = { type: 'error', message: '❌ Se requiere contraseña' };
+        return;
+    }
+
+    const toolData = {
+        ...this.toolForm,
+        id: this.editingTool?.id || undefined,
+        category: this.toolsModalTab
+    };
+
+    try {
+        const response = await fetch('backend/api.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'saveTool',
+                password: this.authPassword,
+                data: toolData
+            })
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            await this.libraryManager.loadTools();
+            this.tools = this.libraryManager.tools;
+            this.toolsStatus = { type: 'success', message: '✅ Herramienta guardada' };
+            this.resetToolForm();
+            this.editingTool = null;
+        } else {
+            this.toolsStatus = { type: 'error', message: '❌ ' + result.message };
+        }
+    } catch (error) {
+        this.toolsStatus = { type: 'error', message: '❌ Error de conexión' };
+    }
+},
+
+async deleteTool(toolId) {
+    if (!this.authPassword) {
+        this.toolsStatus = { type: 'error', message: '❌ Se requiere contraseña' };
+        return;
+    }
+
+    if (!confirm('¿Eliminar esta herramienta?')) return;
+
+    try {
+        const response = await fetch('backend/api.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'deleteTool',
+                password: this.authPassword,
+                id: toolId
+            })
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            await this.libraryManager.loadTools();
+            this.tools = this.libraryManager.tools;
+            this.toolsStatus = { type: 'success', message: '✅ Herramienta eliminada' };
+        } else {
+            this.toolsStatus = { type: 'error', message: '❌ ' + result.message };
+        }
+    } catch (error) {
+        this.toolsStatus = { type: 'error', message: '❌ Error de conexión' };
+    }
+},
+
+getToolsByCategory(category) {
+    return this.tools.filter(t => t.category === category);
+}
 
     };
 };

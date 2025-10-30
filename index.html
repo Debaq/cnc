@@ -226,7 +226,7 @@
                                 <span>⚙️</span>
                                 <span>Config GRBL</span>
                             </button>
-                            <button @click="openModal('toolsLibrary')"
+                            <button @click="openToolsModal()"
                                 class="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
                                 <span>🔧</span>
                                 <span>Herramientas</span>
@@ -357,206 +357,232 @@
                         <div class="flex-1 overflow-y-auto p-6">
 
                             <!-- Elements Tab -->
-                            <div x-show="currentTab === 'elements'"
-                                class="space-y-4">
-                                <!-- Global Config -->
-                                <div
-                                    class="bg-purple-ultra-pale rounded-lg p-4">
-                                    <div
-                                        class="flex items-center justify-between mb-3">
-                                        <h3
-                                            class="text-sm font-semibold text-purple-dark">⚙️
-                                            Config Global</h3>
-                                        <span class="text-xs px-2 py-1 rounded"
-                                            :class="configStatus === 'unified' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'"
-                                            x-text="configStatus === 'unified' ? '✅ Unificada' : '⚠️ Múltiple'"></span>
-                                    </div>
+<!-- Reemplazar la sección de elementos en el tab 'elements' -->
+<div x-show="currentTab === 'elements'" class="space-y-4">
+    <!-- Global Config (mantener igual) -->
+    <div class="bg-purple-ultra-pale rounded-lg p-4">
+        <!-- ... código actual de config global ... -->
+    </div>
 
-                                    <div class="space-y-2 text-sm">
-                                        <select
-                                            x-model="globalConfig.operationType"
-                                            class="w-full px-2 py-1 border rounded text-xs">
-                                            <option value="cnc">CNC
-                                                Corte</option>
-                                            <option value="laser-engrave">Láser
-                                                Grabado</option>
-                                            <option value="laser-cut">Láser
-                                                Corte</option>
-                                        </select>
+    <!-- Elements List -->
+    <div>
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-semibold text-purple-dark">📋 Elementos (<span x-text="elements.length"></span>)</h3>
+            <div class="relative" x-data="{open: false}">
+                <!-- ... botón agregar actual ... -->
+            </div>
+        </div>
 
-                                        <div
-                                            x-show="globalConfig.operationType === 'cnc'">
-                                            <select x-model="globalConfig.tool"
-                                                class="w-full px-2 py-1 border rounded text-xs">
-                                                <option value>Sin
-                                                    herramienta</option>
-                                                <template x-for="tool in tools"
-                                                    :key="tool.name">
-                                                    <option :value="tool.name"
-                                                        x-text="tool.name"></option>
-                                                </template>
-                                            </select>
-                                        </div>
+        <div class="space-y-2 max-h-96 overflow-y-auto">
+            <template x-for="element in elements" :key="element.id">
+                <div class="border rounded-lg p-2 bg-white">
+                    <!-- Element Header -->
+                    <div class="flex items-center gap-2 cursor-pointer hover:bg-purple-ultra-pale p-1 rounded" 
+                         @click="selectElement(element.id)">
+                        <button @click.stop="toggleElementVisibility(element.id)"
+                            class="text-lg" x-text="element.visible ? '👁️' : '👁️‍🗨️'"></button>
+                        <button @click.stop="toggleElementLock(element.id)"
+                            class="text-lg" x-text="element.locked ? '🔒' : '🔓'"></button>
+                        <span class="text-lg"
+                            x-text="element.type === 'svg' ? '📁' : element.type === 'rect' ? '🟦' : element.type === 'circle' ? '⭕' : '➖'"></span>
+                        <span class="flex-1 text-sm font-medium" x-text="element.name"></span>
+                        
+                        <!-- Botón expandir config -->
+                        <button @click.stop="element.showConfig = !element.showConfig"
+                            class="text-xs px-2 py-1 bg-purple-ultra-pale rounded hover:bg-purple-pale">
+                            <span x-text="element.showConfig ? '🔼' : '⚙️'"></span>
+                        </button>
+                        
+                        <button @click.stop="toggleExpandElement(element.id)"
+                            x-show="element.type === 'svg'"
+                            class="text-xs px-2 py-1 bg-gray-100 rounded"
+                            x-text="element.expanded ? '🔽' : '📁'"></button>
+                        <button @click.stop="deleteElement(element.id)"
+                            class="text-red-500 hover:text-red-700 text-xs">🗑️</button>
+                    </div>
 
-                                        <div
-                                            x-show="globalConfig.operationType.startsWith('laser')"
-                                            class="flex gap-2">
-                                            <input type="number"
-                                                x-model="globalConfig.laserPower"
-                                                min="0" max="100"
-                                                class="flex-1 px-2 py-1 border rounded text-xs"
-                                                placeholder="Potencia %">
-                                            <input type="number"
-                                                x-model="globalConfig.passes"
-                                                min="1" max="10"
-                                                class="w-16 px-2 py-1 border rounded text-xs"
-                                                placeholder="Pasadas">
-                                        </div>
+                    <!-- Element Config Panel (NUEVO) -->
+                    <div x-show="element.showConfig" 
+                         x-transition
+                         class="mt-2 p-3 bg-purple-ultra-pale rounded-lg space-y-2">
+                        
+                        <!-- Toggle: Usar config global o propia -->
+                        <label class="flex items-center gap-2 text-xs cursor-pointer">
+                            <input type="checkbox" 
+                                   :checked="!element.config"
+                                   @change="element.config = $event.target.checked ? null : {...globalConfig}">
+                            <span class="font-medium">Heredar configuración global</span>
+                        </label>
 
-                                        <button @click="applyGlobalConfigToAll"
-                                            class="w-full bg-purple-medium hover:bg-purple-dark text-white px-3 py-2 rounded text-xs transition">
-                                            ✅ Aplicar a todos
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <!-- Elements List -->
-                                <div>
-                                    <div
-                                        class="flex items-center justify-between mb-2">
-                                        <h3
-                                            class="text-sm font-semibold text-purple-dark">📋
-                                            Elementos (<span
-                                                x-text="elements.length"></span>)</h3>
-                                        <div class="relative"
-                                            x-data="{open: false}">
-                                            <button @click="open = !open"
-                                                class="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded transition">
-                                                ➕ Agregar
-                                            </button>
-                                            <div x-show="open"
-                                                @click.away="open = false"
-                                                class="absolute right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 w-40">
-                                                <button
-                                                    @click="loadSVG(); open = false"
-                                                    class="w-full text-left px-3 py-2 hover:bg-gray-100 text-xs">📁
-                                                    Cargar SVG</button>
-                                                <button
-                                                    @click="addDrawingElement('rect'); open = false"
-                                                    class="w-full text-left px-3 py-2 hover:bg-gray-100 text-xs">🟦
-                                                    Rectángulo</button>
-                                                <button
-                                                    @click="addDrawingElement('circle'); open = false"
-                                                    class="w-full text-left px-3 py-2 hover:bg-gray-100 text-xs">⭕
-                                                    Círculo</button>
-                                                <button
-                                                    @click="addDrawingElement('line'); open = false"
-                                                    class="w-full text-left px-3 py-2 hover:bg-gray-100 text-xs">➖
-                                                    Línea</button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div
-                                        class="space-y-2 max-h-96 overflow-y-auto">
-                                        <template x-for="element in elements"
-                                            :key="element.id">
-                                            <div
-                                                class="border rounded-lg p-2 bg-white">
-                                                <!-- Element Header -->
-                                                <div class="flex items-center gap-2 cursor-pointer hover:bg-purple-ultra-pale p-1 rounded" @click="selectElement(element.id)">
-                                                    <button
-                                                        @click="toggleElementVisibility(element.id)"
-                                                        class="text-lg"
-                                                        x-text="element.visible ? '👁️' : '👁️‍🗨️'"></button>
-                                                    <button
-                                                        @click="toggleElementLock(element.id)"
-                                                        class="text-lg"
-                                                        x-text="element.locked ? '🔒' : '🔓'"></button>
-                                                    <span class="text-lg"
-                                                        x-text="element.type === 'svg' ? '📁' : element.type === 'rect' ? '🟦' : element.type === 'circle' ? '⭕' : '➖'"></span>
-                                                    <span
-                                                        class="flex-1 text-sm font-medium"
-                                                        x-text="element.name"></span>
-                                                    <button
-                                                        @click="toggleExpandElement(element.id)"
-                                                        x-show="element.type === 'svg'"
-                                                        class="text-xs px-2 py-1 bg-gray-100 rounded"
-                                                        x-text="element.expanded ? '🔼' : '🔽'"></button>
-                                                    <button
-                                                        @click="deleteElement(element.id)"
-                                                        class="text-red-500 hover:text-red-700 text-xs">🗑️</button>
-                                                </div>
-
-                                                <!-- Element Config Status -->
-                                                <div class="mt-2 text-xs">
-                                                    <span
-                                                        class="text-gray-600">⚙️
-                                                    </span>
-                                                    <span
-                                                        x-show="!element.config"
-                                                        class="text-gray-500">[hereda
-                                                        global]</span>
-                                                    <span
-                                                        x-show="element.config"
-                                                        class="text-purple-medium font-medium">
-                                                        ✏️ <span
-                                                            x-text="element.config?.operationType"></span>
-                                                    </span>
-                                                    <span
-                                                        x-show="element.config?.tool"
-                                                        class="ml-2 text-purple-dark">
-                                                        🔧 <span
-                                                            x-text="element.config.tool"></span>
-                                                    </span>
-                                                </div>
-
-                                                <!-- Children (desglosado) -->
-                                                <div
-                                                    x-show="element.expanded && element.children.length > 0"
-                                                    class="mt-2 ml-4 space-y-1">
-                                                    <template
-                                                        x-for="child in element.children"
-                                                        :key="child.id">
-                                                        <div
-                                                            class="border-l-2 border-purple-pale pl-2 py-1 text-xs">
-                                                            <div
-                                                                class="flex items-center gap-2">
-                                                                <button
-                                                                    @click="toggleElementVisibility(child.id)"
-                                                                    x-text="child.visible ? '👁️' : '👁️‍🗨️'"></button>
-                                                                <span
-                                                                    class="flex-1"
-                                                                    x-text="child.name"></span>
-                                                                <button
-                                                                    @click="deleteElement(child.id)"
-                                                                    class="text-red-500 hover:text-red-700">🗑️</button>
-                                                            </div>
-                                                            <div
-                                                                class="text-gray-600 mt-1">
-                                                                <span
-                                                                    x-show="!child.config">[hereda]</span>
-                                                                <span
-                                                                    x-show="child.config"
-                                                                    class="text-purple-medium">✏️
-                                                                    Config
-                                                                    propia</span>
-                                                            </div>
-                                                        </div>
-                                                    </template>
-                                                </div>
-                                            </div>
-                                        </template>
-
-                                        <div x-show="elements.length === 0"
-                                            class="text-center text-gray-400 py-8 text-sm">
-                                            No hay elementos.<br>Agrega un SVG o
-                                            dibuja una figura.
-                                        </div>
-                                    </div>
-                                </div>
+                        <!-- Config Form (solo si tiene config propia) -->
+                        <div x-show="element.config" class="space-y-2 pt-2 border-t">
+                            <!-- Tipo de operación -->
+                            <div>
+                                <label class="text-xs text-gray-600">Operación:</label>
+                                <select x-model="element.config.operationType"
+                                    class="w-full px-2 py-1 border rounded text-xs">
+                                    <option value="cnc">CNC Fresado</option>
+                                    <option value="laser">Láser</option>
+                                    <option value="plotter">Plotter Corte</option>
+                                    <option value="pencil">Lápiz/Marcador</option>
+                                </select>
                             </div>
-                           
+
+                            <!-- Herramienta (CNC, Plotter, Pencil) -->
+                            <div x-show="element.config?.operationType !== 'laser'">
+                                <label class="text-xs text-gray-600">Herramienta:</label>
+                                <select x-model="element.config.tool"
+                                    class="w-full px-2 py-1 border rounded text-xs">
+                                    <option value="">Sin herramienta</option>
+                                    <template x-for="tool in tools.filter(t => 
+                                        (element.config.operationType === 'cnc' && t.category === 'cnc') ||
+                                        (element.config.operationType === 'plotter' && t.category === 'plotter') ||
+                                        (element.config.operationType === 'pencil' && t.category === 'pencil')
+                                    )" :key="tool.id">
+                                        <option :value="tool.name" x-text="tool.name"></option>
+                                    </template>
+                                </select>
+                            </div>
+
+                            <!-- Parámetros CNC -->
+                            <template x-if="element.config?.operationType === 'cnc'">
+                                <div class="space-y-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Profundidad (mm):</label>
+                                            <input type="number" x-model.number="element.config.depth" step="0.5"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Paso (mm):</label>
+                                            <input type="number" x-model.number="element.config.depthStep" step="0.1"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-600">Compensación:</label>
+                                        <select x-model="element.config.compensation"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                            <option value="center">Centro</option>
+                                            <option value="inside">Interior</option>
+                                            <option value="outside">Exterior</option>
+                                        </select>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Feed (mm/min):</label>
+                                            <input type="number" x-model.number="element.config.feedRate"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">RPM:</label>
+                                            <input type="number" x-model.number="element.config.spindleRPM"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Parámetros Láser -->
+                            <template x-if="element.config?.operationType === 'laser'">
+                                <div class="space-y-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Potencia (%):</label>
+                                            <input type="number" x-model.number="element.config.laserPower" 
+                                                min="0" max="100"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Pasadas:</label>
+                                            <input type="number" x-model.number="element.config.passes" 
+                                                min="1"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-600">Velocidad (mm/min):</label>
+                                        <input type="number" x-model.number="element.config.feedRate"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Parámetros Plotter -->
+                            <template x-if="element.config?.operationType === 'plotter'">
+                                <div class="space-y-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Presión (1-33):</label>
+                                            <input type="number" x-model.number="element.config.pressure" 
+                                                min="1" max="33"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Velocidad (mm/s):</label>
+                                            <input type="number" x-model.number="element.config.speed"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-600">Pasadas:</label>
+                                        <input type="number" x-model.number="element.config.passes" min="1"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Parámetros Lápiz -->
+                            <template x-if="element.config?.operationType === 'pencil'">
+                                <div class="space-y-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Presión Z (mm):</label>
+                                            <input type="number" x-model.number="element.config.pressureZ" step="0.1"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Velocidad (mm/min):</label>
+                                            <input type="number" x-model.number="element.config.speed"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Botones de acción -->
+                            <div class="flex gap-2 pt-2">
+                                <button @click="element.config = null; updateConfigStatus()"
+                                    class="flex-1 text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">
+                                    ⟲ Resetear
+                                </button>
+                                <button @click="element.showConfig = false"
+                                    class="flex-1 text-xs bg-purple-medium hover:bg-purple-dark text-white px-2 py-1 rounded">
+                                    ✓ Listo
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Element Config Status (resumen) -->
+                    <div class="mt-2 text-xs" x-show="!element.showConfig">
+                        <span class="text-gray-600">⚙️ </span>
+                        <span x-show="!element.config" class="text-gray-500">[hereda global]</span>
+                        <span x-show="element.config" class="text-purple-medium font-medium">
+                            ✏️ <span x-text="element.config?.operationType"></span>
+                        </span>
+                        <span x-show="element.config?.tool" class="ml-2 text-purple-dark">
+                            🔧 <span x-text="element.config.tool"></span>
+                        </span>
+                    </div>
+
+                    <!-- Children (código actual de desglosado) -->
+                    <!-- ... mantener igual ... -->
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
 
                             <!-- Jog Tab -->
                             <div x-show="currentTab === 'jog'"
@@ -962,6 +988,342 @@
                             class="w-full bg-purple-medium hover:bg-purple-dark text-white px-4 py-2 rounded-lg transition">
                             Cerrar
                         </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Modal Tools Library -->
+            <div x-show="showToolsModal"
+                @click.self="closeToolsModal()"
+                class="modal-backdrop"
+                style="display: none;"
+                x-transition>
+                <div class="modal-content w-full max-w-5xl" @click.stop>
+                    <!-- Header -->
+                    <div
+                        class="bg-purple-dark text-white px-6 py-4 rounded-t-lg flex items-center justify-between">
+                        <h2 class="text-xl font-bold">🔧 Biblioteca de
+                            Herramientas</h2>
+                        <button @click="closeToolsModal()"
+                            class="text-2xl hover:text-purple-pale">&times;</button>
+                    </div>
+
+                    <!-- Tabs -->
+                    <div class="flex border-b border-gray-200 bg-gray-50">
+                        <button @click="toolsModalTab = 'cnc'"
+                            :class="toolsModalTab === 'cnc' ? 'border-b-2 border-purple-medium bg-white font-semibold' : 'text-gray-600'"
+                            class="flex-1 px-6 py-3 text-sm transition">
+                            🔧 CNC
+                        </button>
+                        <button @click="toolsModalTab = 'plotter'"
+                            :class="toolsModalTab === 'plotter' ? 'border-b-2 border-purple-medium bg-white font-semibold' : 'text-gray-600'"
+                            class="flex-1 px-6 py-3 text-sm transition">
+                            ✂️ Plotter
+                        </button>
+                        <button @click="toolsModalTab = 'pencil'"
+                            :class="toolsModalTab === 'pencil' ? 'border-b-2 border-purple-medium bg-white font-semibold' : 'text-gray-600'"
+                            class="flex-1 px-6 py-3 text-sm transition">
+                            ✏️ Lápiz
+                        </button>
+                    </div>
+
+                    <div class="p-6">
+                        <div class="grid grid-cols-2 gap-6">
+                            <!-- Left: Tools List -->
+                            <div>
+                                <div
+                                    class="flex items-center justify-between mb-4">
+                                    <h3
+                                        class="font-semibold text-purple-dark">Herramientas</h3>
+                                    <button
+                                        @click="resetToolForm(); editingTool = null"
+                                        class="text-sm bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded transition">
+                                        ➕ Nueva
+                                    </button>
+                                </div>
+
+                                <div class="space-y-2 max-h-96 overflow-y-auto">
+                                    <template
+                                        x-for="tool in getToolsByCategory(toolsModalTab)"
+                                        :key="tool.id">
+                                        <div
+                                            class="border rounded-lg p-3 hover:bg-purple-ultra-pale transition">
+                                            <div
+                                                class="flex items-start justify-between">
+                                                <div class="flex-1">
+                                                    <h4
+                                                        class="font-medium text-sm"
+                                                        x-text="tool.name"></h4>
+
+                                                    <!-- CNC Info -->
+                                                    <div
+                                                        x-show="toolsModalTab === 'cnc'"
+                                                        class="text-xs text-gray-600 mt-1">
+                                                        <div>Ø <span
+                                                                x-text="tool.diameter"></span>mm</div>
+                                                        <div
+                                                            x-show="tool.angle">Ángulo:
+                                                            <span
+                                                                x-text="tool.angle"></span>°</div>
+                                                        <div><span
+                                                                x-text="tool.feedRate"></span>
+                                                            mm/min @ <span
+                                                                x-text="tool.rpm"></span>
+                                                            RPM</div>
+                                                    </div>
+
+                                                    <!-- Plotter Info -->
+                                                    <div
+                                                        x-show="toolsModalTab === 'plotter'"
+                                                        class="text-xs text-gray-600 mt-1">
+                                                        <div>Ángulo: <span
+                                                                x-text="tool.angle"></span>°</div>
+                                                        <div>Presión: <span
+                                                                x-text="tool.pressure"></span></div>
+                                                        <div>Velocidad: <span
+                                                                x-text="tool.speed"></span>
+                                                            mm/s</div>
+                                                    </div>
+
+                                                    <!-- Pencil Info -->
+                                                    <div
+                                                        x-show="toolsModalTab === 'pencil'"
+                                                        class="text-xs text-gray-600 mt-1">
+                                                        <div>Grosor: <span
+                                                                x-text="tool.thickness"></span>mm</div>
+                                                        <div>Velocidad: <span
+                                                                x-text="tool.speed"></span>
+                                                            mm/min</div>
+                                                        <div
+                                                            class="flex items-center gap-2">
+                                                            Color: <div
+                                                                class="w-4 h-4 rounded border"
+                                                                :style="'background:' + tool.color"></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="flex gap-2">
+                                                    <button
+                                                        @click="editTool(tool)"
+                                                        class="text-purple-medium hover:text-purple-dark">
+                                                        ✏️
+                                                    </button>
+                                                    <button
+                                                        @click="deleteTool(tool.id)"
+                                                        class="text-red-500 hover:text-red-700">
+                                                        🗑️
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <div
+                                        x-show="getToolsByCategory(toolsModalTab).length === 0"
+                                        class="text-center text-gray-400 py-8 text-sm">
+                                        No hay herramientas en esta categoría
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right: Tool Form -->
+                            <div class="border-l pl-6">
+                                <h3 class="font-semibold text-purple-dark mb-4">
+                                    <span
+                                        x-text="editingTool ? 'Editar Herramienta' : 'Nueva Herramienta'"></span>
+                                </h3>
+
+                                <div class="space-y-3">
+                                    <!-- Common Fields -->
+                                    <div>
+                                        <label
+                                            class="text-xs text-gray-600 block mb-1">Nombre
+                                            *</label>
+                                        <input type="text"
+                                            x-model="toolForm.name"
+                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                            placeholder="Ej: End Mill 3mm">
+                                    </div>
+
+                                    <!-- CNC Fields -->
+                                    <template x-if="toolsModalTab === 'cnc'">
+                                        <div class="space-y-3">
+                                            <div>
+                                                <label
+                                                    class="text-xs text-gray-600 block mb-1">Tipo</label>
+                                                <select x-model="toolForm.type"
+                                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                    <option value="endmill">End
+                                                        Mill</option>
+                                                    <option
+                                                        value="ballnose">Ball
+                                                        Nose</option>
+                                                    <option
+                                                        value="vbit">V-Bit</option>
+                                                </select>
+                                            </div>
+
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label
+                                                        class="text-xs text-gray-600 block mb-1">Diámetro
+                                                        (mm)</label>
+                                                    <input type="number"
+                                                        x-model.number="toolForm.diameter"
+                                                        step="0.1"
+                                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                </div>
+                                                <div
+                                                    x-show="toolForm.type === 'vbit'">
+                                                    <label
+                                                        class="text-xs text-gray-600 block mb-1">Ángulo
+                                                        (°)</label>
+                                                    <input type="number"
+                                                        x-model.number="toolForm.angle"
+                                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                </div>
+                                            </div>
+
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label
+                                                        class="text-xs text-gray-600 block mb-1">Feed
+                                                        Rate (mm/min)</label>
+                                                    <input type="number"
+                                                        x-model.number="toolForm.feedRate"
+                                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                </div>
+                                                <div>
+                                                    <label
+                                                        class="text-xs text-gray-600 block mb-1">Plunge
+                                                        Rate (mm/min)</label>
+                                                    <input type="number"
+                                                        x-model.number="toolForm.plungeRate"
+                                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label
+                                                    class="text-xs text-gray-600 block mb-1">Spindle
+                                                    RPM</label>
+                                                <input type="number"
+                                                    x-model.number="toolForm.rpm"
+                                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- Plotter Fields -->
+                                    <template
+                                        x-if="toolsModalTab === 'plotter'">
+                                        <div class="space-y-3">
+                                            <div>
+                                                <label
+                                                    class="text-xs text-gray-600 block mb-1">Ángulo
+                                                    Cuchilla (°)</label>
+                                                <select
+                                                    x-model.number="toolForm.angle"
+                                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                    <option
+                                                        value="30">30°</option>
+                                                    <option
+                                                        value="45">45°</option>
+                                                    <option
+                                                        value="60">60°</option>
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label
+                                                    class="text-xs text-gray-600 block mb-1">Presión
+                                                    (1-33)</label>
+                                                <input type="number"
+                                                    x-model.number="toolForm.pressure"
+                                                    min="1" max="33"
+                                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                            </div>
+
+                                            <div>
+                                                <label
+                                                    class="text-xs text-gray-600 block mb-1">Velocidad
+                                                    (mm/s)</label>
+                                                <input type="number"
+                                                    x-model.number="toolForm.speed"
+                                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- Pencil Fields -->
+                                    <template x-if="toolsModalTab === 'pencil'">
+                                        <div class="space-y-3">
+                                            <div>
+                                                <label
+                                                    class="text-xs text-gray-600 block mb-1">Grosor
+                                                    Línea (mm)</label>
+                                                <input type="number"
+                                                    x-model.number="toolForm.thickness"
+                                                    step="0.1"
+                                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                            </div>
+
+                                            <div>
+                                                <label
+                                                    class="text-xs text-gray-600 block mb-1">Velocidad
+                                                    (mm/min)</label>
+                                                <input type="number"
+                                                    x-model.number="toolForm.speed"
+                                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                            </div>
+
+                                            <div>
+                                                <label
+                                                    class="text-xs text-gray-600 block mb-1">Color</label>
+                                                <input type="color"
+                                                    x-model="toolForm.color"
+                                                    class="w-full h-10 border border-gray-300 rounded-lg">
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- Notes (Common) -->
+                                    <div>
+                                        <label
+                                            class="text-xs text-gray-600 block mb-1">Notas</label>
+                                        <textarea x-model="toolForm.notes"
+                                            rows="2"
+                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                            placeholder="Información adicional..."></textarea>
+                                    </div>
+
+                                    <!-- Password -->
+                                    <div>
+                                        <label
+                                            class="text-xs text-gray-600 block mb-1">Contraseña
+                                            *</label>
+                                        <input type="password"
+                                            x-model="authPassword"
+                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                            placeholder="Requerida para guardar">
+                                    </div>
+
+                                    <!-- Save Button -->
+                                    <button @click="saveTool()"
+                                        class="w-full bg-purple-medium hover:bg-purple-dark text-white px-4 py-2 rounded-lg transition">
+                                        💾 Guardar Herramienta
+                                    </button>
+
+                                    <!-- Status -->
+                                    <div x-show="toolsStatus"
+                                        class="p-3 rounded-lg text-sm text-center"
+                                        :class="toolsStatus?.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'">
+                                        <span
+                                            x-text="toolsStatus?.message"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

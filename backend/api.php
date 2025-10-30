@@ -137,11 +137,17 @@ function saveTool($data) {
     $tool = $data['data'];
     
     // Validate required fields
-    $required = ['name', 'type', 'diameter', 'feedRate', 'rpm'];
+    $required = ['name', 'category'];
     foreach ($required as $field) {
         if (!isset($tool[$field])) {
             respondError("Missing required field: $field");
         }
+    }
+    
+    // Validate category
+    $validCategories = ['cnc', 'plotter', 'pencil'];
+    if (!in_array($tool['category'], $validCategories)) {
+        respondError('Invalid category');
     }
     
     // Load existing tools

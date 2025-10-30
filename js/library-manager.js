@@ -8,36 +8,76 @@ class LibraryManager {
         this.materials = [];
     }
 
-    async loadTools() {
-        // Fallback to default tools
-        this.tools = [
-            {
-                id: '1',
-                name: 'End Mill 3.175mm',
-                diameter: 3.175,
-                feedRate: 800,
-                rpm: 10000,
-                type: 'endmill'
-            },
-            {
-                id: '2',
-                name: 'End Mill 6mm',
-                diameter: 6,
-                feedRate: 1200,
-                rpm: 12000,
-                type: 'endmill'
-            },
-            {
-                id: '3',
-                name: 'V-Bit 60°',
-                diameter: 6.35,
-                feedRate: 600,
-                rpm: 18000,
-                type: 'vbit'
-            }
-        ];
-        return this.tools;
+async loadTools() {
+    try {
+        const response = await fetch('backend/api.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'getTools' })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            this.tools = result.data;
+        } else {
+            // Fallback a herramientas por defecto
+            this.tools = this.getDefaultTools();
+        }
+    } catch (error) {
+        console.warn('Error loading tools, using defaults:', error);
+        this.tools = this.getDefaultTools();
     }
+    
+    return this.tools;
+}
+
+
+getDefaultTools() {
+    return [
+        {
+            id: 'default_1',
+            category: 'cnc',
+            name: 'End Mill 3.175mm',
+            type: 'endmill',
+            diameter: 3.175,
+            feedRate: 800,
+            plungeRate: 400,
+            rpm: 10000,
+            notes: 'Herramienta por defecto'
+        },
+        {
+            id: 'default_2',
+            category: 'cnc',
+            name: 'V-Bit 60°',
+            type: 'vbit',
+            diameter: 6.35,
+            angle: 60,
+            feedRate: 600,
+            plungeRate: 300,
+            rpm: 18000,
+            notes: 'Para grabado'
+        },
+        {
+            id: 'default_3',
+            category: 'plotter',
+            name: 'Cuchilla 45°',
+            angle: 45,
+            pressure: 15,
+            speed: 100,
+            notes: 'Vinilo estándar'
+        },
+        {
+            id: 'default_4',
+            category: 'pencil',
+            name: 'Marcador 0.8mm',
+            thickness: 0.8,
+            speed: 1000,
+            color: '#000000',
+            notes: 'Dibujo general'
+        }
+    ];
+}
 
     async loadMaterials() {
         // Fallback to default materials
