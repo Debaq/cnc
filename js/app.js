@@ -80,6 +80,14 @@ window.grblApp = function() {
         showWorkAreaModal: false,
         tempWorkArea: { width: 400, height: 400 },
 
+        // Modal GRBL Settings
+        showGRBLModal: false,
+        grblSettings: [],
+        grblSearchQuery: '',
+        grblSettingsStatus: null,
+        showGRBLHelpModal: false,
+        currentGRBLHelp: {},
+
         // Init
         async init() {
             console.log('🚀 Initializing GRBL Web Control Pro v3.5...');
@@ -322,7 +330,7 @@ window.grblApp = function() {
             this.svgRotation = `${transform.rotation.toFixed(0)}°`;
         },
 
-        // NUEVO: Work Area Modal
+        // Work Area Modal
         openWorkAreaModal() {
             this.tempWorkArea.width = this.canvasManager.workArea.width;
             this.tempWorkArea.height = this.canvasManager.workArea.height;
@@ -344,9 +352,117 @@ window.grblApp = function() {
             this.tempWorkArea.height = height;
         },
 
+        // ============================================
+        // GRBL SETTINGS MODAL
+        // ============================================
+        openGRBLModal() {
+            this.showGRBLModal = true;
+            this.grblSettingsStatus = null;
+        },
+
+        closeGRBLModal() {
+            this.showGRBLModal = false;
+            this.grblSearchQuery = '';
+            this.grblSettingsStatus = null;
+        },
+
+        async loadGRBLSettings() {
+            if (!this.connected) {
+                this.grblSettingsStatus = { type: 'error', message: '❌ No hay conexión con GRBL' };
+                return;
+            }
+
+            this.grblSettingsStatus = { type: 'info', message: '⏳ Leyendo configuración...' };
+            this.addConsoleLine('📖 Reading GRBL settings...');
+
+            try {
+                const settings = await this.serialControl.readSettings();
+                this.grblSettings = settings;
+                this.grblSettingsStatus = {
+                    type: 'success',
+                    message: `✅ ${settings.length} configuraciones cargadas`
+                };
+                this.addConsoleLine(`✅ Loaded ${settings.length} GRBL settings`);
+            } catch (error) {
+                this.grblSettingsStatus = {
+                    type: 'error',
+                    message: '❌ Error al leer configuración: ' + error.message
+                };
+                this.addConsoleLine('❌ Error reading settings: ' + error.message);
+            }
+        },
+
+        async saveGRBLSettings() {
+            if (!this.connected) return;
+
+            if (!confirm('¿Guardar cambios en la máquina GRBL?')) return;
+
+            this.grblSettingsStatus = { type: 'info', message: '⏳ Guardando configuración...' };
+            this.addConsoleLine('💾 Saving GRBL settings...');
+
+            try {
+                await this.serialControl.writeSettings(this.grblSettings);
+                this.grblSettingsStatus = {
+                    type: 'success',
+                    message: '✅ Configuración guardada correctamente'
+                };
+                this.addConsoleLine('✅ Settings saved successfully');
+            } catch (error) {
+                this.grblSettingsStatus = {
+                    type: 'error',
+                    message: '❌ Error al guardar: ' + error.message
+                };
+                this.addConsoleLine('❌ Error saving settings: ' + error.message);
+            }
+        },
+
+        async resetGRBLSettings() {
+            if (!this.connected) return;
+
+            if (!confirm('⚠️ ¿RESETEAR GRBL A CONFIGURACIÓN DE FÁBRICA?\n\nEsto borrará todas las configuraciones personalizadas.')) {
+                return;
+            }
+
+            this.grblSettingsStatus = { type: 'info', message: '⏳ Reseteando a factory...' };
+            this.addConsoleLine('⚠️ Resetting GRBL to factory defaults...');
+
+            try {
+                await this.serialControl.sendCommand('$RST=$');
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                await this.loadGRBLSettings();
+                this.grblSettingsStatus = {
+                    type: 'success',
+                    message: '✅ Reset completado. Recarga la configuración.'
+                };
+                this.addConsoleLine('✅ Factory reset completed');
+            } catch (error) {
+                this.grblSettingsStatus = {
+                    type: 'error',
+                    message: '❌ Error al resetear: ' + error.message
+                };
+                this.addConsoleLine('❌ Error resetting: ' + error.message);
+            }
+        },
+
+        showGRBLHelp(setting) {
+            this.currentGRBLHelp = setting;
+            this.showGRBLHelpModal = true;
+        },
+
+        filteredGRBLSettings() {
+            if (!this.grblSearchQuery) return this.grblSettings;
+            const query = this.grblSearchQuery.toLowerCase();
+            return this.grblSettings.filter(s =>
+            s.code.toLowerCase().includes(query) ||
+            s.description.toLowerCase().includes(query)
+            );
+        },
+
         openModal(modalId) {
             if (modalId === 'workArea') {
                 this.openWorkAreaModal();
+            } else if (modalId === 'grblSettings') {
+                this.openGRBLModal();
             } else {
                 console.log('Opening modal:', modalId);
                 alert('Modal ' + modalId + ' - En desarrollo');
