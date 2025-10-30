@@ -827,6 +827,14 @@ window.grblApp = function() {
             const names = { rect: 'Rectángulo', circle: 'Círculo', line: 'Línea', text: 'Texto' };
             return `${names[type] || type} ${counts + 1}`;
         },
+        selectElement(elementId) {
+    const element = this.findElementById(elementId);
+    if (!element || !element.fabricObject) return;
+    
+    this.canvasManager.fabricCanvas.setActiveObject(element.fabricObject);
+    this.canvasManager.fabricCanvas.renderAll();
+    this.selectedElement = element;
+},
 
     };
 };

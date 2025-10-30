@@ -409,9 +409,9 @@ class CanvasManager {
                     console.log('📦 SVG objects loaded:', objects.length);
 
                     // Clear previous
-                    if (this.svgGroup) {
-                        this.fabricCanvas.remove(this.svgGroup);
-                    }
+                    //if (this.svgGroup) {
+                    //    this.fabricCanvas.remove(this.svgGroup);
+                    //}
 
                     // Change color of all objects BEFORE grouping - MÁS FINO
                     objects.forEach(obj => {
