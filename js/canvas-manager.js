@@ -454,10 +454,10 @@ class CanvasManager {
                     this.svgGroup.set({
                         left: originX + 20,
                         top: originY - (this.svgGroup.height * scale) - 20,
-                                      scaleX: scale,
-                                      scaleY: scale,
-                                      selectable: true,
-                                      hasControls: true
+                        scaleX: scale,
+                        scaleY: scale,
+                        selectable: true,
+                        hasControls: true
                     });
 
                     this.fabricCanvas.add(this.svgGroup);

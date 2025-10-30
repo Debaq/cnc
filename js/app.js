@@ -235,7 +235,7 @@ window.grblApp = function() {
                 x: obj.left,
                 y: obj.top,
                 scale: (obj.scaleX + obj.scaleY) / 2,
-                                     rotation: obj.angle
+                rotation: obj.angle
             });
         },
 
@@ -263,7 +263,7 @@ window.grblApp = function() {
                 x: obj.left,
                 y: obj.top,
                 scale: (obj.scaleX + obj.scaleY) / 2,
-                                     rotation: obj.angle
+                rotation: obj.angle
             });
         },
 
@@ -609,7 +609,7 @@ window.grblApp = function() {
                 console.log('Opening modal:', modalId);
                 alert('Modal ' + modalId + ' - En desarrollo');
             }
-        }
+        },
         // ============================================
         // ELEMENTS SYSTEM
         // ============================================
