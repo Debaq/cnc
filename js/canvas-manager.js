@@ -1,5 +1,5 @@
 // ============================================
-// CANVAS MANAGER (Fabric.js) - MEJORADO
+// CANVAS MANAGER (Fabric.js) - MEJORADO CON PATH EXTRACTION
 // ============================================
 class CanvasManager {
     constructor(app) {
@@ -477,9 +477,208 @@ class CanvasManager {
         });
     }
 
+    // ============================================
+    // PATH EXTRACTION FOR G-CODE
+    // ============================================
     getPaths() {
-        // Simplified - return empty for now
-        // TODO: Implement full path extraction
-        return [];
+        if (!this.svgGroup) {
+            console.warn('No SVG loaded');
+            return [];
+        }
+
+        const paths = [];
+        const workW = this.workArea.width * this.pixelsPerMM;
+        const workH = this.workArea.height * this.pixelsPerMM;
+        const centerX = this.fabricCanvas.width / 2;
+        const centerY = this.fabricCanvas.height / 2;
+        const originX = centerX - workW / 2;
+        const originY = centerY + workH / 2;
+
+        console.log('🔍 Extracting paths from SVG group');
+
+        // Get all objects from group
+        const objects = this.svgGroup.type === 'group' ? this.svgGroup.getObjects() : [this.svgGroup];
+
+        objects.forEach((obj, index) => {
+            try {
+                const pathData = this.extractPathFromObject(obj, originX, originY);
+                if (pathData && pathData.points.length > 0) {
+                    paths.push(pathData);
+                    console.log(`  Path ${index + 1}:`, pathData.points.length, 'points');
+                }
+            } catch (error) {
+                console.error(`Error extracting path ${index}:`, error);
+            }
+        });
+
+        console.log(`✅ Extracted ${paths.length} paths`);
+        return paths;
+    }
+
+    extractPathFromObject(obj, originX, originY) {
+        const points = [];
+        const type = obj.type;
+
+        // Get object transform matrix
+        const matrix = obj.calcTransformMatrix();
+
+        switch (type) {
+            case 'path':
+                // Extract points from path
+                const pathData = obj.path;
+                let currentX = 0, currentY = 0;
+
+                pathData.forEach(cmd => {
+                    const command = cmd[0];
+                    switch (command) {
+                        case 'M': // Move to
+                            currentX = cmd[1];
+                            currentY = cmd[2];
+                            points.push(this.transformPoint(currentX, currentY, matrix, originX, originY));
+                            break;
+                        case 'L': // Line to
+                            currentX = cmd[1];
+                            currentY = cmd[2];
+                            points.push(this.transformPoint(currentX, currentY, matrix, originX, originY));
+                            break;
+                        case 'H': // Horizontal line
+                            currentX = cmd[1];
+                            points.push(this.transformPoint(currentX, currentY, matrix, originX, originY));
+                            break;
+                        case 'V': // Vertical line
+                            currentY = cmd[1];
+                            points.push(this.transformPoint(currentX, currentY, matrix, originX, originY));
+                            break;
+                        case 'C': // Cubic bezier
+                            // Approximate bezier with line segments
+                            const bezierPoints = this.approximateBezier(
+                                currentX, currentY,
+                                cmd[1], cmd[2], cmd[3], cmd[4], cmd[5], cmd[6],
+                                10 // segments
+                            );
+                            bezierPoints.forEach(p => {
+                                points.push(this.transformPoint(p.x, p.y, matrix, originX, originY));
+                            });
+                            currentX = cmd[5];
+                            currentY = cmd[6];
+                            break;
+                        case 'Q': // Quadratic bezier
+                            const quadPoints = this.approximateQuadBezier(
+                                currentX, currentY,
+                                cmd[1], cmd[2], cmd[3], cmd[4],
+                                10
+                            );
+                            quadPoints.forEach(p => {
+                                points.push(this.transformPoint(p.x, p.y, matrix, originX, originY));
+                            });
+                            currentX = cmd[3];
+                            currentY = cmd[4];
+                            break;
+                        case 'Z': // Close path
+                            if (points.length > 0) {
+                                points.push({ ...points[0] }); // Close to first point
+                            }
+                            break;
+                    }
+                });
+                break;
+
+                        case 'line':
+                            points.push(this.transformPoint(obj.x1, obj.y1, matrix, originX, originY));
+                            points.push(this.transformPoint(obj.x2, obj.y2, matrix, originX, originY));
+                            break;
+
+                        case 'rect':
+                            const w = obj.width;
+                            const h = obj.height;
+                            points.push(this.transformPoint(0, 0, matrix, originX, originY));
+                            points.push(this.transformPoint(w, 0, matrix, originX, originY));
+                            points.push(this.transformPoint(w, h, matrix, originX, originY));
+                            points.push(this.transformPoint(0, h, matrix, originX, originY));
+                            points.push(this.transformPoint(0, 0, matrix, originX, originY)); // Close
+                            break;
+
+                        case 'circle':
+                        case 'ellipse':
+                            const rx = obj.rx || obj.radius;
+                            const ry = obj.ry || obj.radius;
+                            const segments = 32;
+                            for (let i = 0; i <= segments; i++) {
+                                const angle = (i / segments) * Math.PI * 2;
+                                const x = Math.cos(angle) * rx;
+                                const y = Math.sin(angle) * ry;
+                                points.push(this.transformPoint(x, y, matrix, originX, originY));
+                            }
+                            break;
+
+                        case 'polygon':
+                        case 'polyline':
+                            if (obj.points) {
+                                obj.points.forEach(p => {
+                                    points.push(this.transformPoint(p.x, p.y, matrix, originX, originY));
+                                });
+                                if (type === 'polygon' && points.length > 0) {
+                                    points.push({ ...points[0] }); // Close polygon
+                                }
+                            }
+                            break;
+        }
+
+        return {
+            type: type,
+            closed: type === 'rect' || type === 'circle' || type === 'ellipse' || type === 'polygon',
+            points: points
+        };
+    }
+
+    transformPoint(x, y, matrix, originX, originY) {
+        // Apply Fabric transform matrix
+        const transformed = fabric.util.transformPoint(
+            { x: x, y: y },
+            matrix
+        );
+
+        // Convert from canvas coordinates to machine coordinates (mm)
+        // Canvas: origin top-left, Y down
+        // Machine: origin bottom-left, Y up
+        const machineX = (transformed.x - originX) / this.pixelsPerMM;
+        const machineY = (originY - transformed.y) / this.pixelsPerMM;
+
+        return {
+            x: parseFloat(machineX.toFixed(3)),
+            y: parseFloat(machineY.toFixed(3))
+        };
+    }
+
+    approximateBezier(x0, y0, x1, y1, x2, y2, x3, y3, segments) {
+        const points = [];
+        for (let i = 0; i <= segments; i++) {
+            const t = i / segments;
+            const t2 = t * t;
+            const t3 = t2 * t;
+            const mt = 1 - t;
+            const mt2 = mt * mt;
+            const mt3 = mt2 * mt;
+
+            const x = mt3 * x0 + 3 * mt2 * t * x1 + 3 * mt * t2 * x2 + t3 * x3;
+            const y = mt3 * y0 + 3 * mt2 * t * y1 + 3 * mt * t2 * y2 + t3 * y3;
+            points.push({ x, y });
+        }
+        return points;
+    }
+
+    approximateQuadBezier(x0, y0, x1, y1, x2, y2, segments) {
+        const points = [];
+        for (let i = 0; i <= segments; i++) {
+            const t = i / segments;
+            const t2 = t * t;
+            const mt = 1 - t;
+            const mt2 = mt * mt;
+
+            const x = mt2 * x0 + 2 * mt * t * x1 + t2 * x2;
+            const y = mt2 * y0 + 2 * mt * t * y1 + t2 * y2;
+            points.push({ x, y });
+        }
+        return points;
     }
 }
