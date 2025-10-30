@@ -158,22 +158,6 @@ window.grblApp = function() {
             }
         },
 
-        // Tools
-        selectTool(tool) {
-            this.currentTool = tool;
-            if (this.canvasManager && this.canvasManager.fabricCanvas) {
-                switch(tool) {
-                    case 'move':
-                        this.canvasManager.fabricCanvas.defaultCursor = 'move';
-                        break;
-                    case 'rotate':
-                        this.canvasManager.fabricCanvas.defaultCursor = 'grab';
-                        break;
-                    default:
-                        this.canvasManager.fabricCanvas.defaultCursor = 'default';
-                }
-            }
-        },
 
         zoomIn() {
             if (this.canvasManager) {
