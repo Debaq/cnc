@@ -468,7 +468,8 @@ class CanvasManager {
                     console.log('   Size:', this.svgGroup.width.toFixed(1), 'x', this.svgGroup.height.toFixed(1), 'px');
                     console.log('   Scale:', scale.toFixed(2));
 
-                    resolve();
+                    resolve(this.svgGroup); // Devolver el grupo para agregarlo a elementos
+
                 });
             };
 
@@ -512,6 +513,36 @@ class CanvasManager {
         });
 
         console.log(`✅ Extracted ${paths.length} paths`);
+        return paths;
+    }
+
+    getPathsFromElement(element) {
+        if (!element.fabricObject) return [];
+
+        const paths = [];
+        const workW = this.workArea.width * this.pixelsPerMM;
+        const workH = this.workArea.height * this.pixelsPerMM;
+        const centerX = this.fabricCanvas.width / 2;
+        const centerY = this.fabricCanvas.height / 2;
+        const originX = centerX - workW / 2;
+        const originY = centerY + workH / 2;
+
+        if (element.type === 'path' || element.type === 'svg') {
+            const pathData = this.extractPathFromObject(element.fabricObject, originX, originY);
+            if (pathData && pathData.points.length > 0) {
+                paths.push(pathData);
+            }
+        } else if (element.children && element.children.length > 0) {
+            element.children.forEach(child => {
+                if (child.visible) {
+                    const pathData = this.extractPathFromObject(child.fabricObject, originX, originY);
+                    if (pathData && pathData.points.length > 0) {
+                        paths.push(pathData);
+                    }
+                }
+            });
+        }
+
         return paths;
     }
 

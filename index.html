@@ -310,6 +310,128 @@
                     <!-- Tab Content -->
                     <div class="flex-1 overflow-y-auto p-6">
 
+<!-- Elements Tab -->
+<div x-show="currentTab === 'elements'" class="space-y-4">
+    <!-- Global Config -->
+    <div class="bg-purple-ultra-pale rounded-lg p-4">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-purple-dark">⚙️ Config Global</h3>
+            <span class="text-xs px-2 py-1 rounded"
+                  :class="configStatus === 'unified' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'"
+                  x-text="configStatus === 'unified' ? '✅ Unificada' : '⚠️ Múltiple'"></span>
+        </div>
+
+        <div class="space-y-2 text-sm">
+            <select x-model="globalConfig.operationType" class="w-full px-2 py-1 border rounded text-xs">
+                <option value="cnc">CNC Corte</option>
+                <option value="laser-engrave">Láser Grabado</option>
+                <option value="laser-cut">Láser Corte</option>
+            </select>
+
+            <div x-show="globalConfig.operationType === 'cnc'">
+                <select x-model="globalConfig.tool" class="w-full px-2 py-1 border rounded text-xs">
+                    <option value="">Sin herramienta</option>
+                    <template x-for="tool in tools" :key="tool.name">
+                        <option :value="tool.name" x-text="tool.name"></option>
+                    </template>
+                </select>
+            </div>
+
+            <div x-show="globalConfig.operationType.startsWith('laser')" class="flex gap-2">
+                <input type="number" x-model="globalConfig.laserPower" min="0" max="100"
+                       class="flex-1 px-2 py-1 border rounded text-xs" placeholder="Potencia %">
+                <input type="number" x-model="globalConfig.passes" min="1" max="10"
+                       class="w-16 px-2 py-1 border rounded text-xs" placeholder="Pasadas">
+            </div>
+
+            <button @click="applyGlobalConfigToAll"
+                    class="w-full bg-purple-medium hover:bg-purple-dark text-white px-3 py-2 rounded text-xs transition">
+                ✅ Aplicar a todos
+            </button>
+        </div>
+    </div>
+
+    <!-- Elements List -->
+    <div>
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-semibold text-purple-dark">📋 Elementos (<span x-text="elements.length"></span>)</h3>
+            <div class="relative" x-data="{open: false}">
+                <button @click="open = !open"
+                        class="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded transition">
+                    ➕ Agregar
+                </button>
+                <div x-show="open" @click.away="open = false"
+                     class="absolute right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 w-40">
+                    <button @click="loadSVG(); open = false"
+                            class="w-full text-left px-3 py-2 hover:bg-gray-100 text-xs">📁 Cargar SVG</button>
+                    <button @click="addDrawingElement('rect'); open = false"
+                            class="w-full text-left px-3 py-2 hover:bg-gray-100 text-xs">🟦 Rectángulo</button>
+                    <button @click="addDrawingElement('circle'); open = false"
+                            class="w-full text-left px-3 py-2 hover:bg-gray-100 text-xs">⭕ Círculo</button>
+                    <button @click="addDrawingElement('line'); open = false"
+                            class="w-full text-left px-3 py-2 hover:bg-gray-100 text-xs">➖ Línea</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-2 max-h-96 overflow-y-auto">
+            <template x-for="element in elements" :key="element.id">
+                <div class="border rounded-lg p-2 bg-white">
+                    <!-- Element Header -->
+                    <div class="flex items-center gap-2">
+                        <button @click="toggleElementVisibility(element.id)"
+                                class="text-lg" x-text="element.visible ? '👁️' : '👁️‍🗨️'"></button>
+                        <button @click="toggleElementLock(element.id)"
+                                class="text-lg" x-text="element.locked ? '🔒' : '🔓'"></button>
+                        <span class="text-lg" x-text="element.type === 'svg' ? '📁' : element.type === 'rect' ? '🟦' : element.type === 'circle' ? '⭕' : '➖'"></span>
+                        <span class="flex-1 text-sm font-medium" x-text="element.name"></span>
+                        <button @click="toggleExpandElement(element.id)"
+                                x-show="element.type === 'svg'"
+                                class="text-xs px-2 py-1 bg-gray-100 rounded"
+                                x-text="element.expanded ? '🔼' : '🔽'"></button>
+                        <button @click="deleteElement(element.id)"
+                                class="text-red-500 hover:text-red-700 text-xs">🗑️</button>
+                    </div>
+
+                    <!-- Element Config Status -->
+                    <div class="mt-2 text-xs">
+                        <span class="text-gray-600">⚙️ </span>
+                        <span x-show="!element.config" class="text-gray-500">[hereda global]</span>
+                        <span x-show="element.config" class="text-purple-medium font-medium">
+                            ✏️ <span x-text="element.config?.operationType"></span>
+                        </span>
+                        <span x-show="element.config?.tool" class="ml-2 text-purple-dark">
+                            🔧 <span x-text="element.config.tool"></span>
+                        </span>
+                    </div>
+
+                    <!-- Children (desglosado) -->
+                    <div x-show="element.expanded && element.children.length > 0" class="mt-2 ml-4 space-y-1">
+                        <template x-for="child in element.children" :key="child.id">
+                            <div class="border-l-2 border-purple-pale pl-2 py-1 text-xs">
+                                <div class="flex items-center gap-2">
+                                    <button @click="toggleElementVisibility(child.id)"
+                                            x-text="child.visible ? '👁️' : '👁️‍🗨️'"></button>
+                                    <span class="flex-1" x-text="child.name"></span>
+                                    <button @click="deleteElement(child.id)"
+                                            class="text-red-500 hover:text-red-700">🗑️</button>
+                                </div>
+                                <div class="text-gray-600 mt-1">
+                                    <span x-show="!child.config">[hereda]</span>
+                                    <span x-show="child.config" class="text-purple-medium">✏️ Config propia</span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+
+            <div x-show="elements.length === 0" class="text-center text-gray-400 py-8 text-sm">
+                No hay elementos.<br>Agrega un SVG o dibuja una figura.
+            </div>
+        </div>
+    </div>
+</div>
                         <!-- Config Tab -->
                         <div x-show="currentTab === 'config'" class="space-y-6">
                             <div>
