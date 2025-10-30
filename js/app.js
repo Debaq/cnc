@@ -34,7 +34,7 @@ window.grblApp = function() {
         currentTool: 'select',
         tabs: [
             { id: 'elements', name: 'Elementos', icon: '📋' },
-            { id: 'config', name: 'Config', icon: '⚙️' },
+            //{ id: 'config', name: 'Config', icon: '⚙️' },
             { id: 'jog', name: 'Jog', icon: '🎮' },
             { id: 'gcode', name: 'G-code', icon: '📝' },
             { id: 'console', name: 'Consola', icon: '💻' }
@@ -49,9 +49,9 @@ window.grblApp = function() {
         proportionalScale: true,
 
         // Config
-        operationType: 'cnc',
-        selectedTool: '',
-        selectedMaterial: '',
+        //operationType: 'cnc',
+        //selectedTool: '',
+        //selectedMaterial: '',
         tools: [],
         materials: [],
 
@@ -74,16 +74,16 @@ window.grblApp = function() {
         configStatus: 'unified', // 'unified', 'multiple', 'none'
         showElementConfig: false,
 
-        config: {
-            depth: -3,
-            depthStep: 1,
-            toolDiameter: 3.175,
-            compensation: 'center',
-            feedRate: 800,
-            plungeRate: 400,
-            spindleRPM: 10000,
-            laserPower: 60
-        },
+        //config: {
+        //    depth: -3,
+         //   depthStep: 1,
+         //   toolDiameter: 3.175,
+         //   compensation: 'center',
+          //  feedRate: 800,
+           // plungeRate: 400,
+           // spindleRPM: 10000,
+           // laserPower: 60
+        //},
 
         // Jog
         jogDistance: 1,
