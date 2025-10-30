@@ -30,7 +30,7 @@ window.grblApp = function() {
         posMode: 'WPos',
 
         // UI
-        currentTab: 'config',
+        currentTab: 'elements',
         currentTool: 'select',
         tabs: [
             { id: 'elements', name: 'Elementos', icon: '📋' },
