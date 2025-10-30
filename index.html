@@ -224,8 +224,37 @@
                     <!-- Canvas Toolbar -->
                     <div class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
                         <div class="flex items-center gap-2">
-                           <!-- ACA AGREGAR CONTROLES DE TAMAÑO ALTURA X ANCHO -->
+<div class="flex items-center gap-3">
+    <div class="flex items-center gap-1">
+        <span class="text-xs text-gray-600">Ancho:</span>
+        <input type="number"
+               x-model.number="svgWidth"
+               @input="updateSVGWidth()"
+               step="1"
+               min="1"
+               class="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right">
+        <span class="text-xs text-gray-500">mm</span>
+    </div>
 
+    <button @click="proportionalScale = !proportionalScale"
+            :class="proportionalScale ? 'bg-purple-medium text-white' : 'bg-gray-200'"
+            class="px-2 py-1 rounded transition"
+            title="Escala proporcional">
+        <span x-show="proportionalScale">🔒</span>
+        <span x-show="!proportionalScale">🔓</span>
+    </button>
+
+    <div class="flex items-center gap-1">
+        <span class="text-xs text-gray-600">Alto:</span>
+        <input type="number"
+               x-model.number="svgHeight"
+               @input="updateSVGHeight()"
+               step="1"
+               min="1"
+               class="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right">
+        <span class="text-xs text-gray-500">mm</span>
+    </div>
+</div>
                         </div>
 
                         <div class="flex items-center gap-4 text-sm text-gray-600">

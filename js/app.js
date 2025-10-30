@@ -44,6 +44,9 @@ window.grblApp = function() {
         svgScale: '100%',
         svgRotation: '0°',
         workAreaSize: '400 x 400',
+        svgWidth: 0,
+        svgHeight: 0,
+        proportionalScale: true,
 
         // Config
         operationType: 'cnc',
@@ -150,6 +153,8 @@ window.grblApp = function() {
                 setTimeout(() => {
                     this.canvasManager.fitView();
                 }, 100);
+                // Actualizar dimensiones iniciales
+                this.updateSVGDimensions();
 
             } catch (error) {
                 console.error('Error loading SVG:', error);
@@ -184,6 +189,70 @@ window.grblApp = function() {
                 this.svgScale = '100%';
                 this.svgRotation = '0°';
             }
+        },
+        updateSVGWidth() {
+            if (!this.svgLoaded || !this.canvasManager.svgGroup) return;
+
+            const obj = this.canvasManager.svgGroup;
+            const targetWidthPx = this.svgWidth * this.canvasManager.pixelsPerMM;
+            const newScaleX = targetWidthPx / obj.width;
+
+            if (this.proportionalScale) {
+                // Escala proporcional
+                obj.set({
+                    scaleX: newScaleX,
+                    scaleY: newScaleX
+                });
+                this.svgHeight = Math.round((obj.height * newScaleX) / this.canvasManager.pixelsPerMM);
+            } else {
+                // Solo ancho
+                obj.set('scaleX', newScaleX);
+            }
+
+            this.canvasManager.fabricCanvas.renderAll();
+            this.updateTransformInfo({
+                x: obj.left,
+                y: obj.top,
+                scale: (obj.scaleX + obj.scaleY) / 2,
+                                     rotation: obj.angle
+            });
+        },
+
+        updateSVGHeight() {
+            if (!this.svgLoaded || !this.canvasManager.svgGroup) return;
+
+            const obj = this.canvasManager.svgGroup;
+            const targetHeightPx = this.svgHeight * this.canvasManager.pixelsPerMM;
+            const newScaleY = targetHeightPx / obj.height;
+
+            if (this.proportionalScale) {
+                // Escala proporcional
+                obj.set({
+                    scaleX: newScaleY,
+                    scaleY: newScaleY
+                });
+                this.svgWidth = Math.round((obj.width * newScaleY) / this.canvasManager.pixelsPerMM);
+            } else {
+                // Solo alto
+                obj.set('scaleY', newScaleY);
+            }
+
+            this.canvasManager.fabricCanvas.renderAll();
+            this.updateTransformInfo({
+                x: obj.left,
+                y: obj.top,
+                scale: (obj.scaleX + obj.scaleY) / 2,
+                                     rotation: obj.angle
+            });
+        },
+
+        updateSVGDimensions() {
+            // Actualizar dimensiones cuando cambia el SVG
+            if (!this.canvasManager.svgGroup) return;
+
+            const obj = this.canvasManager.svgGroup;
+            this.svgWidth = Math.round((obj.width * obj.scaleX) / this.canvasManager.pixelsPerMM);
+            this.svgHeight = Math.round((obj.height * obj.scaleY) / this.canvasManager.pixelsPerMM);
         },
 
         // G-code
