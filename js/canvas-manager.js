@@ -699,6 +699,15 @@ class CanvasManager {
         const machineX = (transformed.x - originX) / this.pixelsPerMM;
         const machineY = (originY - transformed.y) / this.pixelsPerMM;
 
+        // Debug: log first point transformation
+        if (x === 0 && y === 0) {
+            console.log('🔍 Point transformation debug:');
+            console.log('   Input (local):', x, y);
+            console.log('   After matrix (canvas):', transformed.x.toFixed(2), transformed.y.toFixed(2));
+            console.log('   Origin (canvas):', originX.toFixed(2), originY.toFixed(2));
+            console.log('   Final (machine mm):', machineX.toFixed(3), machineY.toFixed(3));
+        }
+
         return {
             x: parseFloat(machineX.toFixed(3)),
             y: parseFloat(machineY.toFixed(3))
