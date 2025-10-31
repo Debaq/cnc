@@ -172,15 +172,23 @@ class CanvasManager {
         console.log('   ✅ Work area rect added');
     }
 
-    setupOrigin() {
+    getOrigin() {
+        // Calculate origin position (bottom-left corner of work area)
         const workW = this.workArea.width * this.pixelsPerMM;
         const workH = this.workArea.height * this.pixelsPerMM;
         const centerX = this.fabricCanvas.width / 2;
         const centerY = this.fabricCanvas.height / 2;
 
-        // Origin is bottom-left corner
         const originX = centerX - workW / 2;
         const originY = centerY + workH / 2;
+
+        return { x: originX, y: originY };
+    }
+
+    setupOrigin() {
+        const originPos = this.getOrigin();
+        const originX = originPos.x;
+        const originY = originPos.y;
 
         console.log('📍 Setting up origin at:', originX.toFixed(1), originY.toFixed(1));
 
@@ -205,7 +213,7 @@ class CanvasManager {
         });
 
         // Origin dot - MÁS PEQUEÑO
-        const origin = new fabric.Circle({
+        const originDot = new fabric.Circle({
             left: originX - 6,
             top: originY - 6,
             radius: 6,
@@ -241,10 +249,10 @@ class CanvasManager {
             evented: false
         });
 
-        this.fabricCanvas.add(xAxis, yAxis, origin, arrowX, arrowY);
+        this.fabricCanvas.add(xAxis, yAxis, originDot, arrowX, arrowY);
         console.log('   ✅ Origin markers added (X axis RED →, Y axis GREEN ↑)');
 
-        this.originMarker = { xAxis, yAxis, origin, arrowX, arrowY };
+        this.originMarker = { xAxis, yAxis, originDot, arrowX, arrowY };
     }
 
     setupTools() {
@@ -362,7 +370,9 @@ class CanvasManager {
             top: originY - this.svgGroup.height,
             scaleX: 1,
             scaleY: 1,
-            angle: 0
+            angle: 0,
+            originX: 'left',
+            originY: 'bottom'
         });
 
         this.fabricCanvas.renderAll();
@@ -457,7 +467,10 @@ class CanvasManager {
                         scaleX: scale,
                         scaleY: scale,
                         selectable: true,
-                        hasControls: true
+                        hasControls: true,
+                        // Set origin to bottom-left for CNC compatibility
+                        originX: 'left',
+                        originY: 'bottom'
                     });
 
                     this.fabricCanvas.add(this.svgGroup);
@@ -550,8 +563,19 @@ class CanvasManager {
         const points = [];
         const type = obj.type;
 
-        // Get object transform matrix
-        const matrix = obj.calcTransformMatrix();
+        // For objects in a group, we need to apply both object and group transformations
+        // First calculate the object's local transform, then multiply by group's transform
+        let matrix;
+        if (obj.group) {
+            // Get object's transform relative to group
+            const objMatrix = obj.calcOwnMatrix();
+            // Get group's absolute transform
+            const groupMatrix = obj.group.calcTransformMatrix();
+            // Multiply them
+            matrix = fabric.util.multiplyTransformMatrices(groupMatrix, objMatrix);
+        } else {
+            matrix = obj.calcTransformMatrix();
+        }
 
         switch (type) {
             case 'path':

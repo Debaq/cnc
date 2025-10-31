@@ -2,6 +2,8 @@
 // GRBL Web Control Pro v3.0 - Main App
 // ============================================
 
+// Store GCodeViewer outside Alpine's reactive system to avoid Three.js proxy conflicts
+let globalGCodeViewer = null;
 
 // ============================================
 // ALPINE.JS APP
@@ -11,6 +13,7 @@ window.grblApp = function() {
         // Managers
         canvasManager: null,
         gcodeGenerator: null,
+        // Note: gcodeViewer is stored outside Alpine's reactive system to avoid proxy conflicts with Three.js
         serialControl: null,
         libraryManager: null,
 
@@ -37,6 +40,7 @@ window.grblApp = function() {
             //{ id: 'config', name: 'Config', icon: '⚙️' },
             { id: 'jog', name: 'Jog', icon: '🎮' },
             { id: 'gcode', name: 'G-code', icon: '📝' },
+            { id: 'viewer', name: 'Visor 3D', icon: '🎬' },
             { id: 'console', name: 'Consola', icon: '💻' }
         ],
         // SVG info
@@ -44,6 +48,8 @@ window.grblApp = function() {
         svgScale: '100%',
         svgRotation: '0°',
         workAreaSize: '400 x 400',
+        svgX: 0,
+        svgY: 0,
         svgWidth: 0,
         svgHeight: 0,
         proportionalScale: true,
@@ -99,6 +105,18 @@ window.grblApp = function() {
         consoleLines: [],
         consoleInput: '',
 
+        // 3D Viewer
+        viewMode: 'svg', // 'svg' or '3d'
+        viewer3DStats: {
+            distance: '0 mm',
+            time: '0s',
+            passes: 0
+        },
+        viewer3DCurrentPass: 0,
+        viewer3DPlaying: false,
+        viewer3DAnimProgress: 0,
+        viewer3DSpeed: 1.0,
+
         // Modal Work Area
         showWorkAreaModal: false,
         tempWorkArea: { width: 400, height: 400 },
@@ -149,6 +167,16 @@ toolsStatus: null,
                 console.log('✅ Canvas inicializado');
             } else {
                 console.error('❌ Canvas element not found');
+            }
+
+            // Init 3D viewer (stored globally to avoid Alpine reactivity issues with Three.js)
+            const viewer3dCanvas = this.$refs.viewer3d;
+            if (viewer3dCanvas) {
+                globalGCodeViewer = new GCodeViewer(viewer3dCanvas);
+                globalGCodeViewer.init();
+                console.log('✅ 3D Viewer inicializado');
+            } else {
+                console.warn('⚠️ 3D Viewer canvas not found');
             }
 
             // Load libraries
@@ -288,13 +316,46 @@ toolsStatus: null,
             });
         },
 
+        updateSVGPosition() {
+            if (!this.svgLoaded || !this.canvasManager.svgGroup) return;
+
+            const obj = this.canvasManager.svgGroup;
+            const origin = this.canvasManager.getOrigin();
+
+            // Convert from machine coordinates (mm) to canvas pixels
+            // With originY: 'bottom', obj.top represents the bottom edge
+            const canvasX = origin.x + (this.svgX * this.canvasManager.pixelsPerMM);
+            const canvasY = origin.y - (this.svgY * this.canvasManager.pixelsPerMM);
+
+            obj.set({
+                left: canvasX,
+                top: canvasY
+            });
+
+            this.canvasManager.fabricCanvas.renderAll();
+            this.updateTransformInfo({
+                x: obj.left,
+                y: obj.top,
+                scale: (obj.scaleX + obj.scaleY) / 2,
+                rotation: obj.angle
+            });
+        },
+
         updateSVGDimensions() {
-            // Actualizar dimensiones cuando cambia el SVG
+            // Actualizar dimensiones y posición cuando cambia el SVG
             if (!this.canvasManager.svgGroup) return;
 
             const obj = this.canvasManager.svgGroup;
+            const origin = this.canvasManager.getOrigin();
+
+            // Update size
             this.svgWidth = Math.round((obj.width * obj.scaleX) / this.canvasManager.pixelsPerMM);
             this.svgHeight = Math.round((obj.height * obj.scaleY) / this.canvasManager.pixelsPerMM);
+
+            // Update position (convert from canvas pixels to machine mm)
+            // With originY: 'bottom', obj.top already represents bottom edge
+            this.svgX = Math.round((obj.left - origin.x) / this.canvasManager.pixelsPerMM);
+            this.svgY = Math.round((origin.y - obj.top) / this.canvasManager.pixelsPerMM);
         },
 
         // G-code
@@ -358,6 +419,12 @@ toolsStatus: null,
             this.gcodeLines = allGcode.split('\n').length;
             this.gcodeGenerated = true;
             this.addConsoleLine('✅ G-code generado: ' + this.gcodeLines + ' líneas');
+
+            // Update 3D viewer if initialized
+            if (globalGCodeViewer) {
+                this.updateViewer3D();
+            }
+
             this.currentTab = 'gcode';
         },
 
@@ -966,6 +1033,121 @@ async deleteTool(toolId) {
 
 getToolsByCategory(category) {
     return this.tools.filter(t => t.category === category);
+},
+
+// ====================================
+// 3D VIEWER METHODS
+// ====================================
+
+switchTo3DView() {
+    if (!this.gcodeGenerated) {
+        console.warn('⚠️ No G-code generated yet');
+        return;
+    }
+
+    console.log('🎬 Switching to 3D view');
+    this.viewMode = '3d';
+    this.currentTab = 'viewer';
+
+    // Update viewer with current G-code
+    if (globalGCodeViewer) {
+        // Small delay to ensure canvas is visible
+        setTimeout(() => {
+            // Force resize to ensure proper canvas dimensions
+            globalGCodeViewer.handleResize();
+            this.updateViewer3D();
+        }, 100);
+    }
+},
+
+updateViewer3D() {
+    if (!globalGCodeViewer || !this.gcode) {
+        console.warn('⚠️ Cannot update 3D viewer: not initialized or no G-code');
+        return;
+    }
+
+    console.log('🎬 Updating 3D viewer...');
+
+    // Parse and visualize G-code
+    globalGCodeViewer.parseGCode(this.gcode);
+    globalGCodeViewer.visualize(this.viewer3DCurrentPass);
+
+    // Update statistics
+    const stats = globalGCodeViewer.getStats();
+    this.viewer3DStats = {
+        distance: stats.distance,
+        time: stats.time,
+        passes: stats.passes
+    };
+
+    // Reset animation
+    this.viewer3DAnimProgress = 0;
+    this.viewer3DPlaying = false;
+
+    console.log('✅ 3D viewer updated');
+},
+
+updateViewer3DPass() {
+    if (!globalGCodeViewer) return;
+
+    console.log('🔄 Updating pass view:', this.viewer3DCurrentPass);
+    globalGCodeViewer.visualize(this.viewer3DCurrentPass);
+    this.stopViewer3D();
+},
+
+resetViewer3D() {
+    if (!globalGCodeViewer) return;
+
+    console.log('🔄 Resetting 3D viewer');
+    globalGCodeViewer.resetCamera();
+    this.viewer3DCurrentPass = 0;
+    this.stopViewer3D();
+},
+
+playViewer3D() {
+    if (!globalGCodeViewer || !this.gcodeGenerated) return;
+
+    console.log('▶ Playing 3D animation');
+    this.viewer3DPlaying = true;
+    globalGCodeViewer.setAnimationSpeed(this.viewer3DSpeed);
+    globalGCodeViewer.startAnimation();
+
+    // Update progress periodically
+    this.updateAnimationProgress();
+},
+
+pauseViewer3D() {
+    if (!globalGCodeViewer) return;
+
+    console.log('⏸ Pausing 3D animation');
+    this.viewer3DPlaying = false;
+    globalGCodeViewer.pauseAnimation();
+},
+
+stopViewer3D() {
+    if (!globalGCodeViewer) return;
+
+    console.log('⏹ Stopping 3D animation');
+    this.viewer3DPlaying = false;
+    this.viewer3DAnimProgress = 0;
+    globalGCodeViewer.stopAnimation();
+},
+
+updateAnimationProgress() {
+    if (!this.viewer3DPlaying || !globalGCodeViewer) return;
+
+    this.viewer3DAnimProgress = Math.round(globalGCodeViewer.getAnimationProgress());
+
+    if (this.viewer3DPlaying) {
+        requestAnimationFrame(() => this.updateAnimationProgress());
+    }
+},
+
+// Called when speed slider changes
+watchViewer3DSpeed() {
+    if (globalGCodeViewer) {
+        globalGCodeViewer.setAnimationSpeed(this.viewer3DSpeed);
+    }
 }
 
     };
