@@ -327,6 +327,11 @@ toolsStatus: null,
             const canvasX = origin.x + (this.svgX * this.canvasManager.pixelsPerMM);
             const canvasY = origin.y - (this.svgY * this.canvasManager.pixelsPerMM);
 
+            console.log('🔧 updateSVGPosition:');
+            console.log('   Requested:', this.svgX, this.svgY, 'mm');
+            console.log('   Origin:', origin.x, origin.y);
+            console.log('   Setting group to:', canvasX, canvasY);
+
             obj.set({
                 left: canvasX,
                 top: canvasY

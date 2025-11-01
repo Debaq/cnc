@@ -461,6 +461,9 @@ class CanvasManager {
                         scale = maxSize / currentSize;
                     }
 
+                    // Calculate bounding box to find actual content bounds
+                    const bbox = this.svgGroup.getBoundingRect(true, true);
+
                     this.svgGroup.set({
                         left: originX + 20,
                         top: originY - (this.svgGroup.height * scale) - 20,
@@ -472,6 +475,12 @@ class CanvasManager {
                         originX: 'left',
                         originY: 'bottom'
                     });
+
+                    // Store the bounding box offset for later use in G-code generation
+                    this.svgGroup.bboxOffset = {
+                        x: bbox.left,
+                        y: bbox.top
+                    };
 
                     this.fabricCanvas.add(this.svgGroup);
                     this.fabricCanvas.setActiveObject(this.svgGroup);
@@ -566,6 +575,8 @@ class CanvasManager {
         // For objects in a group, we need to apply both object and group transformations
         // First calculate the object's local transform, then multiply by group's transform
         let matrix;
+        let groupLeft = 0, groupTop = 0;
+
         if (obj.group) {
             // Get object's transform relative to group
             const objMatrix = obj.calcOwnMatrix();
@@ -573,8 +584,13 @@ class CanvasManager {
             const groupMatrix = obj.group.calcTransformMatrix();
             // Multiply them
             matrix = fabric.util.multiplyTransformMatrices(groupMatrix, objMatrix);
+            // Use the group's actual left/top position (not from matrix)
+            groupLeft = obj.group.left;
+            groupTop = obj.group.top;
         } else {
             matrix = obj.calcTransformMatrix();
+            groupLeft = obj.left;
+            groupTop = obj.top;
         }
 
         switch (type) {
@@ -589,20 +605,20 @@ class CanvasManager {
                         case 'M': // Move to
                             currentX = cmd[1];
                             currentY = cmd[2];
-                            points.push(this.transformPoint(currentX, currentY, matrix, originX, originY));
+                            points.push(this.transformPoint(currentX, currentY, matrix, originX, originY, groupLeft, groupTop));
                             break;
                         case 'L': // Line to
                             currentX = cmd[1];
                             currentY = cmd[2];
-                            points.push(this.transformPoint(currentX, currentY, matrix, originX, originY));
+                            points.push(this.transformPoint(currentX, currentY, matrix, originX, originY, groupLeft, groupTop));
                             break;
                         case 'H': // Horizontal line
                             currentX = cmd[1];
-                            points.push(this.transformPoint(currentX, currentY, matrix, originX, originY));
+                            points.push(this.transformPoint(currentX, currentY, matrix, originX, originY, groupLeft, groupTop));
                             break;
                         case 'V': // Vertical line
                             currentY = cmd[1];
-                            points.push(this.transformPoint(currentX, currentY, matrix, originX, originY));
+                            points.push(this.transformPoint(currentX, currentY, matrix, originX, originY, groupLeft, groupTop));
                             break;
                         case 'C': // Cubic bezier
                             // Approximate bezier with line segments
@@ -612,7 +628,7 @@ class CanvasManager {
                                 10 // segments
                             );
                             bezierPoints.forEach(p => {
-                                points.push(this.transformPoint(p.x, p.y, matrix, originX, originY));
+                                points.push(this.transformPoint(p.x, p.y, matrix, originX, originY, groupLeft, groupTop));
                             });
                             currentX = cmd[5];
                             currentY = cmd[6];
@@ -624,7 +640,7 @@ class CanvasManager {
                                 10
                             );
                             quadPoints.forEach(p => {
-                                points.push(this.transformPoint(p.x, p.y, matrix, originX, originY));
+                                points.push(this.transformPoint(p.x, p.y, matrix, originX, originY, groupLeft, groupTop));
                             });
                             currentX = cmd[3];
                             currentY = cmd[4];
@@ -639,18 +655,18 @@ class CanvasManager {
                 break;
 
                         case 'line':
-                            points.push(this.transformPoint(obj.x1, obj.y1, matrix, originX, originY));
-                            points.push(this.transformPoint(obj.x2, obj.y2, matrix, originX, originY));
+                            points.push(this.transformPoint(obj.x1, obj.y1, matrix, originX, originY, groupLeft, groupTop));
+                            points.push(this.transformPoint(obj.x2, obj.y2, matrix, originX, originY, groupLeft, groupTop));
                             break;
 
                         case 'rect':
                             const w = obj.width;
                             const h = obj.height;
-                            points.push(this.transformPoint(0, 0, matrix, originX, originY));
-                            points.push(this.transformPoint(w, 0, matrix, originX, originY));
-                            points.push(this.transformPoint(w, h, matrix, originX, originY));
-                            points.push(this.transformPoint(0, h, matrix, originX, originY));
-                            points.push(this.transformPoint(0, 0, matrix, originX, originY)); // Close
+                            points.push(this.transformPoint(0, 0, matrix, originX, originY, groupLeft, groupTop));
+                            points.push(this.transformPoint(w, 0, matrix, originX, originY, groupLeft, groupTop));
+                            points.push(this.transformPoint(w, h, matrix, originX, originY, groupLeft, groupTop));
+                            points.push(this.transformPoint(0, h, matrix, originX, originY, groupLeft, groupTop));
+                            points.push(this.transformPoint(0, 0, matrix, originX, originY, groupLeft, groupTop)); // Close
                             break;
 
                         case 'circle':
@@ -662,7 +678,7 @@ class CanvasManager {
                                 const angle = (i / segments) * Math.PI * 2;
                                 const x = Math.cos(angle) * rx;
                                 const y = Math.sin(angle) * ry;
-                                points.push(this.transformPoint(x, y, matrix, originX, originY));
+                                points.push(this.transformPoint(x, y, matrix, originX, originY, groupLeft, groupTop));
                             }
                             break;
 
@@ -670,7 +686,7 @@ class CanvasManager {
                         case 'polyline':
                             if (obj.points) {
                                 obj.points.forEach(p => {
-                                    points.push(this.transformPoint(p.x, p.y, matrix, originX, originY));
+                                    points.push(this.transformPoint(p.x, p.y, matrix, originX, originY, groupLeft, groupTop));
                                 });
                                 if (type === 'polygon' && points.length > 0) {
                                     points.push({ ...points[0] }); // Close polygon
@@ -686,24 +702,35 @@ class CanvasManager {
         };
     }
 
-    transformPoint(x, y, matrix, originX, originY) {
-        // Apply Fabric transform matrix
+    transformPoint(x, y, matrix, originX, originY, groupLeft = null, groupTop = null) {
+        // Apply Fabric transform matrix to get absolute canvas coordinates
         const transformed = fabric.util.transformPoint(
             { x: x, y: y },
             matrix
         );
 
-        // Convert from canvas coordinates to machine coordinates (mm)
-        // Canvas: origin top-left, Y down
-        // Machine: origin bottom-left, Y up
-        const machineX = (transformed.x - originX) / this.pixelsPerMM;
-        const machineY = (originY - transformed.y) / this.pixelsPerMM;
+        // Use provided group position or extract from matrix
+        // When originY: 'bottom' is set, the matrix doesn't reflect the actual left/top
+        const groupX = groupLeft !== null ? groupLeft : matrix[4];
+        const groupY = groupTop !== null ? groupTop : matrix[5];
+
+        // Convert transformed point from absolute canvas to relative to group
+        const relativeX = transformed.x - groupX;
+        const relativeY = transformed.y - groupY;
+
+        // Now convert group position + relative offset to machine coordinates
+        const machineX = (groupX - originX) / this.pixelsPerMM + relativeX / this.pixelsPerMM;
+        const machineY = (originY - groupY) / this.pixelsPerMM - relativeY / this.pixelsPerMM;
 
         // Debug: log first point transformation
         if (x === 0 && y === 0) {
             console.log('🔍 Point transformation debug:');
             console.log('   Input (local):', x, y);
             console.log('   After matrix (canvas):', transformed.x.toFixed(2), transformed.y.toFixed(2));
+            console.log('   Group position (provided):', groupLeft, groupTop);
+            console.log('   Group position (used):', groupX.toFixed(2), groupY.toFixed(2));
+            console.log('   Matrix position:', matrix[4].toFixed(2), matrix[5].toFixed(2));
+            console.log('   Relative to group:', relativeX.toFixed(2), relativeY.toFixed(2));
             console.log('   Origin (canvas):', originX.toFixed(2), originY.toFixed(2));
             console.log('   Final (machine mm):', machineX.toFixed(3), machineY.toFixed(3));
         }
