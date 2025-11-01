@@ -219,10 +219,6 @@ toolsStatus: null,
                 this.addSVGAsElement(file, svgGroup);
                 this.addConsoleLine('✅ SVG cargado: ' + file.name);
 
-                // Auto fit view after a moment
-                setTimeout(() => {
-                    this.canvasManager.fitView();
-                }, 100);
                 // Actualizar dimensiones iniciales
                 this.updateSVGDimensions();
 
@@ -279,6 +275,7 @@ toolsStatus: null,
                 obj.set('scaleX', newScaleX);
             }
 
+            obj.setCoords(); // Actualizar los controles visuales
             this.canvasManager.fabricCanvas.renderAll();
             this.updateTransformInfo({
                 x: obj.left,
@@ -307,6 +304,7 @@ toolsStatus: null,
                 obj.set('scaleY', newScaleY);
             }
 
+            obj.setCoords(); // Actualizar los controles visuales
             this.canvasManager.fabricCanvas.renderAll();
             this.updateTransformInfo({
                 x: obj.left,
@@ -337,6 +335,7 @@ toolsStatus: null,
                 top: canvasY
             });
 
+            obj.setCoords(); // Actualizar los controles visuales
             this.canvasManager.fabricCanvas.renderAll();
             this.updateTransformInfo({
                 x: obj.left,

@@ -364,11 +364,11 @@
                         </div>
 
                         <!-- Canvas Area - SVG & 3D Views -->
-                        <div class="flex-1 p-4 relative">
+                        <div class="flex-1 p-4 relative overflow-hidden">
                             <!-- SVG Canvas -->
-                            <div x-show="viewMode === 'svg'" class="w-full h-full">
+                            <div x-show="viewMode === 'svg'" style="width: 100%; height: 100%;">
                                 <canvas x-ref="canvas"
-                                    class="w-full h-full rounded-lg shadow-lg"></canvas>
+                                    class="rounded-lg shadow-lg" style="display: block;"></canvas>
                             </div>
 
                             <!-- 3D Viewer Canvas -->

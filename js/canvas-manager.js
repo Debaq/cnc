@@ -60,8 +60,21 @@ class CanvasManager {
         this.setupGrid();
         this.setupOrigin();
 
-        // Handle window resize
-        window.addEventListener('resize', () => this.resize());
+        // Handle window resize con debounce
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => this.resize(), 100);
+        });
+
+        // ResizeObserver para detectar cambios en el contenedor (más confiable)
+        if (typeof ResizeObserver !== 'undefined') {
+            this.resizeObserver = new ResizeObserver(() => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => this.resize(), 100);
+            });
+            this.resizeObserver.observe(parent);
+        }
 
         // Tool handlers
         this.setupTools();
@@ -77,8 +90,32 @@ class CanvasManager {
         const newWidth = container.clientWidth;
         const newHeight = container.clientHeight;
 
+        // No hacer nada si el tamaño no cambió significativamente
+        if (Math.abs(this.fabricCanvas.width - newWidth) < 10 &&
+            Math.abs(this.fabricCanvas.height - newHeight) < 10) {
+            return;
+        }
+
+        console.log('📐 Resizing canvas from', this.fabricCanvas.width, 'x', this.fabricCanvas.height,
+                    'to', newWidth, 'x', newHeight);
+
+        // Guardar el estado actual del viewport
+        const currentZoom = this.fabricCanvas.getZoom();
+        const vpt = this.fabricCanvas.viewportTransform.slice(); // Copiar array
+
+        // Calcular el centro actual del viewport en coordenadas del canvas
+        const oldCenterX = (this.fabricCanvas.width / 2 - vpt[4]) / currentZoom;
+        const oldCenterY = (this.fabricCanvas.height / 2 - vpt[5]) / currentZoom;
+
+        // Cambiar tamaño del canvas
         this.fabricCanvas.setWidth(newWidth);
         this.fabricCanvas.setHeight(newHeight);
+
+        // Recalcular la posición del viewport para mantener el centro
+        const newVpt = this.fabricCanvas.viewportTransform;
+        newVpt[4] = newWidth / 2 - oldCenterX * currentZoom;
+        newVpt[5] = newHeight / 2 - oldCenterY * currentZoom;
+        this.fabricCanvas.setViewportTransform(newVpt);
 
         // Redraw grid and origin
         this.clearGrid();
@@ -86,6 +123,8 @@ class CanvasManager {
         this.setupOrigin();
 
         this.fabricCanvas.renderAll();
+
+        console.log('✅ Canvas resized successfully');
     }
 
     clearGrid() {
@@ -256,6 +295,31 @@ class CanvasManager {
     }
 
     setupTools() {
+        // Listeners para actualizar los inputs cuando se mueve/escala el SVG
+        this.fabricCanvas.on('object:modified', () => {
+            if (this.app && this.app.updateSVGDimensions) {
+                this.app.updateSVGDimensions();
+            }
+        });
+
+        this.fabricCanvas.on('object:moving', () => {
+            if (this.app && this.app.updateSVGDimensions) {
+                this.app.updateSVGDimensions();
+            }
+        });
+
+        this.fabricCanvas.on('object:scaling', () => {
+            if (this.app && this.app.updateSVGDimensions) {
+                this.app.updateSVGDimensions();
+            }
+        });
+
+        this.fabricCanvas.on('object:rotating', () => {
+            if (this.app && this.app.updateSVGDimensions) {
+                this.app.updateSVGDimensions();
+            }
+        });
+
         // Mouse wheel zoom - centrado en el área de trabajo
         this.fabricCanvas.on('mouse:wheel', (opt) => {
             const delta = opt.e.deltaY;
