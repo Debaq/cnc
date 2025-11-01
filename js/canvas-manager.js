@@ -256,14 +256,19 @@ class CanvasManager {
     }
 
     setupTools() {
-        // Mouse wheel zoom
+        // Mouse wheel zoom - centrado en el área de trabajo
         this.fabricCanvas.on('mouse:wheel', (opt) => {
             const delta = opt.e.deltaY;
             let zoom = this.fabricCanvas.getZoom();
             zoom *= 0.999 ** delta;
             if (zoom > 10) zoom = 10;
             if (zoom < 0.1) zoom = 0.1;
-            this.fabricCanvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+
+            // Hacer zoom hacia el centro del canvas en lugar del cursor
+            // Esto mantiene el área de trabajo centrada
+            const center = this.fabricCanvas.getCenter();
+            this.fabricCanvas.zoomToPoint({ x: center.left, y: center.top }, zoom);
+
             opt.e.preventDefault();
             opt.e.stopPropagation();
         });
@@ -302,18 +307,20 @@ class CanvasManager {
     }
 
     zoomIn() {
+        const center = this.fabricCanvas.getCenter();
         let zoom = this.fabricCanvas.getZoom();
         zoom *= 1.2;
         if (zoom > 10) zoom = 10;
-        this.fabricCanvas.setZoom(zoom);
+        this.fabricCanvas.zoomToPoint({ x: center.left, y: center.top }, zoom);
         this.fabricCanvas.renderAll();
     }
 
     zoomOut() {
+        const center = this.fabricCanvas.getCenter();
         let zoom = this.fabricCanvas.getZoom();
         zoom *= 0.8;
         if (zoom < 0.1) zoom = 0.1;
-        this.fabricCanvas.setZoom(zoom);
+        this.fabricCanvas.zoomToPoint({ x: center.left, y: center.top }, zoom);
         this.fabricCanvas.renderAll();
     }
 
@@ -407,10 +414,17 @@ class CanvasManager {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
 
-            reader.onload = (e) => {
+            reader.onload = async (e) => {
                 const svgString = e.target.result;
 
-                fabric.loadSVGFromString(svgString, (objects, options) => {
+                try {
+                    // Fabric.js 6.x usa Promise en lugar de callback
+                    const result = await fabric.loadSVGFromString(svgString);
+
+                    // En v6, result es un objeto con { objects, options }
+                    const objects = result.objects || [];
+                    const options = result.options || {};
+
                     if (!objects || objects.length === 0) {
                         reject(new Error('No objects in SVG'));
                         return;
@@ -492,7 +506,10 @@ class CanvasManager {
 
                     resolve(this.svgGroup); // Devolver el grupo para agregarlo a elementos
 
-                });
+                } catch (error) {
+                    console.error('❌ Error loading SVG:', error);
+                    reject(error);
+                }
             };
 
             reader.onerror = () => reject(new Error('Error reading file'));
