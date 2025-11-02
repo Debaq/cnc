@@ -1,0 +1,237 @@
+<!-- Panel Izquierdo - Workspace Diseño -->
+<div class="flex flex-col h-full">
+
+    <!-- Header del Panel -->
+    <div class="px-4 py-3 border-b border-gray-200 bg-gray-50">
+        <h2 class="text-sm font-semibold text-purple-dark flex items-center gap-2">
+            <span>📐</span>
+            <span>Área de Diseño</span>
+        </h2>
+    </div>
+
+    <!-- Botón Agregar -->
+    <div class="px-4 py-3 border-b border-gray-200">
+        <div class="relative" x-data="{open: false}">
+            <button @click="open = !open"
+                class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-purple-medium hover:bg-purple-dark text-white rounded-lg text-xs font-medium transition">
+                <span>➕</span>
+                <span>Agregar Elemento</span>
+                <span x-text="open ? '▲' : '▼'" class="text-[10px]"></span>
+            </button>
+
+            <!-- Dropdown Menu -->
+            <div x-show="open"
+                 @click.away="open = false"
+                 x-transition
+                 class="absolute left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+
+                <!-- Cargar SVG -->
+                <button @click="loadSVG(); open = false"
+                    class="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-purple-ultra-pale transition text-xs text-left border-b border-gray-200 font-semibold text-purple-dark">
+                    <span>📁</span>
+                    <span>Cargar SVG</span>
+                </button>
+
+                <!-- Título Sección Maker.js -->
+                <div class="px-3 py-2 text-[10px] font-bold text-purple-dark bg-purple-ultra-pale sticky top-0">
+                    🔷 FORMAS MAKER.JS
+                </div>
+
+                <!-- Formas Básicas -->
+                <div class="border-b border-gray-100">
+                    <button @click="addMakerModel('Rectangle'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">▭</span>
+                        <span>Rectángulo</span>
+                    </button>
+                    <button @click="addMakerModel('Square'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">□</span>
+                        <span>Cuadrado</span>
+                    </button>
+                    <button @click="addMakerModel('RoundRectangle'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">▢</span>
+                        <span>Rectángulo Redondeado</span>
+                    </button>
+                </div>
+
+                <!-- Formas Circulares -->
+                <div class="border-b border-gray-100">
+                    <button @click="addMakerModel('Oval'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">⬭</span>
+                        <span>Óvalo</span>
+                    </button>
+                    <button @click="addMakerModel('Ellipse'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">⬯</span>
+                        <span>Elipse</span>
+                    </button>
+                    <button @click="addMakerModel('Ring'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">◯</span>
+                        <span>Anillo</span>
+                    </button>
+                </div>
+
+                <!-- Formas Poligonales -->
+                <div class="border-b border-gray-100">
+                    <button @click="addMakerModel('Polygon'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">⬡</span>
+                        <span>Polígono</span>
+                    </button>
+                    <button @click="addMakerModel('Star'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">⭐</span>
+                        <span>Estrella</span>
+                    </button>
+                </div>
+
+                <!-- Formas Especiales -->
+                <div>
+                    <button @click="addMakerModel('Slot'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">⬬</span>
+                        <span>Ranura</span>
+                    </button>
+                    <button @click="addMakerModel('Dome'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">⌒</span>
+                        <span>Domo</span>
+                    </button>
+                    <button @click="addMakerModel('BoltCircle'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">⚙️</span>
+                        <span>Círculo de Tornillos</span>
+                    </button>
+                    <button @click="addMakerModel('BoltRectangle'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">▦</span>
+                        <span>Rect. de Tornillos</span>
+                    </button>
+                    <button @click="addMakerModel('Text'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-xs text-left">
+                        <span class="text-base">📝</span>
+                        <span>Texto</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lista de Elementos -->
+    <div class="flex-1 overflow-y-auto px-4 py-3">
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                Elementos (<span x-text="elements.length"></span>)
+            </h3>
+        </div>
+
+        <!-- Elementos List -->
+        <div class="space-y-1">
+            <template x-for="(element, index) in elements" :key="element.id">
+                <div @click="selectElement(element.id)"
+                     :class="selectedElementId === element.id ? 'bg-purple-ultra-pale border-purple-medium' : 'bg-white border-gray-200 hover:bg-gray-50'"
+                     class="border rounded-lg p-2 cursor-pointer transition group">
+
+                    <!-- Element Header -->
+                    <div class="flex items-center gap-2">
+                        <!-- Orden de Mecanizado -->
+                        <span class="text-[10px] font-bold text-gray-400 w-4" x-text="index + 1"></span>
+
+                        <!-- Visibilidad -->
+                        <button @click.stop="toggleElementVisibility(element.id)"
+                            class="text-sm hover:scale-110 transition"
+                            :title="element.visible ? 'Ocultar' : 'Mostrar'">
+                            <span x-show="element.visible">👁️</span>
+                            <span x-show="!element.visible" class="opacity-40">👁️‍🗨️</span>
+                        </button>
+
+                        <!-- Bloqueo -->
+                        <button @click.stop="toggleElementLock(element.id)"
+                            class="text-sm hover:scale-110 transition"
+                            :title="element.locked ? 'Desbloquear' : 'Bloquear'">
+                            <span x-show="element.locked">🔒</span>
+                            <span x-show="!element.locked" class="opacity-40">🔓</span>
+                        </button>
+
+                        <!-- Icono del Tipo -->
+                        <span class="text-sm"
+                            x-text="element.type === 'svg' ? '📁' :
+                                    element.type === 'maker' ? '🔷' :
+                                    element.type === 'rect' ? '🟦' :
+                                    element.type === 'circle' ? '⭕' :
+                                    element.type === 'line' ? '➖' : '❓'">
+                        </span>
+
+                        <!-- Nombre -->
+                        <span class="flex-1 text-xs font-medium truncate" x-text="element.name"></span>
+
+                        <!-- Indicador de Configuración -->
+                        <span class="text-xs"
+                              :title="element.config ? 'Config personalizada' : 'Hereda config global'">
+                            <span x-show="!element.config">⚙️</span>
+                            <span x-show="element.config" class="text-purple-medium">🎯</span>
+                        </span>
+
+                        <!-- Menú Contextual -->
+                        <div class="relative" x-data="{menuOpen: false}" @click.stop="">
+                            <button @click="menuOpen = !menuOpen"
+                                class="text-gray-400 hover:text-gray-700 text-xs px-1 opacity-0 group-hover:opacity-100 transition">
+                                ⋮
+                            </button>
+                            <div x-show="menuOpen"
+                                 @click.away="menuOpen = false"
+                                 x-transition
+                                 class="absolute right-0 mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-50 text-xs">
+                                <button @click="duplicateElement(element.id); menuOpen = false"
+                                    class="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2">
+                                    <span>📋</span>
+                                    <span>Duplicar</span>
+                                </button>
+                                <button @click="renameElement(element.id); menuOpen = false"
+                                    class="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2">
+                                    <span>✏️</span>
+                                    <span>Renombrar</span>
+                                </button>
+                                <button @click="deleteElement(element.id); menuOpen = false"
+                                    class="w-full px-3 py-2 text-left hover:bg-red-50 text-red-600 flex items-center gap-2 border-t">
+                                    <span>🗑️</span>
+                                    <span>Eliminar</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Resumen de Config (solo si seleccionado) -->
+                    <div x-show="selectedElementId === element.id && element.config"
+                         class="mt-2 pt-2 border-t border-gray-200 text-[10px] text-gray-600">
+                        <span x-text="element.config?.operationType || ''"></span>
+                        <span x-show="element.config?.tool"> • <span x-text="element.config?.tool"></span></span>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Empty State -->
+            <div x-show="elements.length === 0" class="text-center py-12 text-gray-400">
+                <div class="text-4xl mb-2">📐</div>
+                <p class="text-xs">No hay elementos</p>
+                <p class="text-[10px] mt-1">Agrega formas o carga un SVG</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer con Botón Generar G-code -->
+    <div class="px-4 py-3 border-t border-gray-200 bg-gray-50">
+        <button @click="generateGCode"
+            :disabled="elements.length === 0"
+            :class="elements.length > 0 ? 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600' : 'bg-gray-300 cursor-not-allowed'"
+            class="w-full flex items-center justify-center gap-2 text-white px-4 py-2.5 rounded-lg text-xs font-medium transition shadow-md">
+            <span>⚙️</span>
+            <span>Generar G-code</span>
+        </button>
+    </div>
+
+</div>

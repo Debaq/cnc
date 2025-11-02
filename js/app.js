@@ -32,12 +32,20 @@ window.grblApp = function() {
         position: { x: '0.000', y: '0.000', z: '0.000' },
         posMode: 'WPos',
 
-        // UI
+        // UI - Nuevo sistema de workspaces
+        currentWorkspace: 'design', // 'design', 'preview', 'control'
+        leftPanelCollapsed: false,
+        selectedElementId: null,
+        selectedElements: [], // Array de elementos seleccionados (soporta grupo)
+        isGroupSelection: false, // true si hay múltiples elementos seleccionados
+        showPropertiesPanel: false,
+
+        // UI - Legacy (mantener por compatibilidad temporal)
         currentTab: 'elements',
         currentTool: 'select',
+        viewMode: 'svg', // mantener para compatibilidad con código existente
         tabs: [
             { id: 'elements', name: 'Elementos', icon: '📋' },
-            //{ id: 'config', name: 'Config', icon: '⚙️' },
             { id: 'jog', name: 'Jog', icon: '🎮' },
             { id: 'gcode', name: 'G-code', icon: '📝' },
             { id: 'viewer', name: 'Visor 3D', icon: '🎬' },
@@ -120,6 +128,20 @@ window.grblApp = function() {
         viewer3DPlaying: false,
         viewer3DAnimProgress: 0,
         viewer3DSpeed: 1.0,
+
+        // Preview workspace variables (nuevas)
+        estimatedTime: null,
+        totalDistance: null,
+        maxDepth: null,
+        animationSpeed: 1,
+        animationProgress: 0,
+        show3DGrid: true,
+        show3DAxes: true,
+
+        // Serial connection (nuevas)
+        availablePorts: [],
+        serialPort: '',
+        baudRate: 115200,
 
         // Modal Work Area
         showWorkAreaModal: false,
@@ -238,9 +260,31 @@ toolsStatus: null,
             console.log('📂 Loading SVG:', file.name);
 
             try {
-                const svgGroup = await this.canvasManager.loadSVG(file);
+                // Crear el elemento ANTES de cargar el SVG
+                const elementId = 'el_' + Date.now();
+
+                const element = {
+                    id: elementId,
+                    type: 'svg',
+                    name: file.name,
+                    visible: true,
+                    locked: false,
+                    expanded: false,
+                    showConfig: false,
+                    fabricObject: null, // Se asignará después
+                    config: null,
+                    children: []
+                };
+                this.elements.push(element);
+
+                // Cargar SVG y pasar el elementId
+                const svgGroup = await this.canvasManager.loadSVG(file, elementId);
+
+                // Actualizar el fabricObject del elemento
+                element.fabricObject = svgGroup;
+
                 this.svgLoaded = true;
-                this.addSVGAsElement(file, svgGroup);
+                this.updateConfigStatus();
                 this.addConsoleLine('✅ SVG cargado: ' + file.name);
 
                 // Actualizar dimensiones iniciales
@@ -786,23 +830,6 @@ toolsStatus: null,
         // ELEMENTS SYSTEM
         // ============================================
 
-        addSVGAsElement(file, svgGroup) {
-            const element = {
-                id: 'el_' + Date.now(),
-                type: 'svg',
-                name: file.name,
-                visible: true,
-                locked: false,
-                expanded: false,
-                showConfig: false, // NUEVO
-                fabricObject: svgGroup,
-                config: null, // null = hereda global
-                children: [] // paths internos si se desglosa
-            };
-            this.elements.push(element);
-            this.updateConfigStatus();
-        },
-
         toggleExpandElement(elementId) {
             const element = this.elements.find(e => e.id === elementId);
             if (!element || element.type !== 'svg') return;
@@ -990,12 +1017,14 @@ toolsStatus: null,
             }
 
             if (fabricObj) {
-                this.canvasManager.fabricCanvas.add(fabricObj);
-                this.canvasManager.fabricCanvas.setActiveObject(fabricObj);
-                this.canvasManager.fabricCanvas.renderAll();
+                const elementId = 'el_' + Date.now();
 
+                // Agregar ID al objeto de Fabric para poder identificarlo después
+                fabricObj.set('elementId', elementId);
+
+                // Crear el elemento ANTES de agregarlo al canvas
                 const element = {
-                    id: 'el_' + Date.now(),
+                    id: elementId,
                     type: type,
                     name: this.getDrawingName(type),
                     visible: true,
@@ -1005,6 +1034,12 @@ toolsStatus: null,
                     config: null
                 };
                 this.elements.push(element);
+
+                // Ahora agregar al canvas y seleccionar
+                this.canvasManager.fabricCanvas.add(fabricObj);
+                this.canvasManager.fabricCanvas.setActiveObject(fabricObj);
+                this.canvasManager.fabricCanvas.renderAll();
+
                 this.addConsoleLine(`✅ Agregado: ${element.name}`);
 
                 // Actualizar los inputs con los valores del nuevo elemento
@@ -1110,10 +1145,11 @@ toolsStatus: null,
 
         async loadMakerModelToCanvas(file, modelType, params) {
             try {
-                const svgGroup = await this.canvasManager.loadSVG(file);
+                // Crear el elemento ANTES de cargar el SVG
+                const elementId = 'el_' + Date.now();
 
                 const element = {
-                    id: 'el_' + Date.now(),
+                    id: elementId,
                     type: 'maker',
                     makerType: modelType,
                     name: modelType,
@@ -1121,13 +1157,20 @@ toolsStatus: null,
                     locked: false,
                     expanded: false,
                     showConfig: false,
-                    fabricObject: svgGroup,
+                    fabricObject: null, // Se asignará después
                     config: null,
                     makerParams: params, // Parámetros específicos del modelo maker
                     children: []
                 };
 
                 this.elements.push(element);
+
+                // Cargar SVG y pasar el elementId
+                const svgGroup = await this.canvasManager.loadSVG(file, elementId);
+
+                // Actualizar el fabricObject del elemento
+                element.fabricObject = svgGroup;
+
                 this.updateConfigStatus();
                 this.addConsoleLine(`✅ Modelo Maker.js agregado: ${modelType}`);
 
@@ -1168,8 +1211,9 @@ toolsStatus: null,
                 // Cargar nuevo SVG
                 const newSvgGroup = await this.canvasManager.loadSVG(file);
 
-                // Aplicar transformación anterior
+                // Aplicar transformación anterior y mantener el ID
                 newSvgGroup.set({
+                    elementId: element.id,
                     left: oldLeft,
                     top: oldTop,
                     scaleX: oldScaleX,
@@ -1200,15 +1244,259 @@ toolsStatus: null,
         },
         selectElement(elementId) {
             const element = this.findElementById(elementId);
-            if (!element || !element.fabricObject) return;
+            if (!element) {
+                console.warn('❌ Element not found:', elementId);
+                return;
+            }
 
-            this.canvasManager.fabricCanvas.setActiveObject(element.fabricObject);
-            this.canvasManager.fabricCanvas.renderAll();
+            // Seleccionar en canvas si tiene fabricObject
+            if (element.fabricObject) {
+                this.canvasManager.fabricCanvas.setActiveObject(element.fabricObject);
+                this.canvasManager.fabricCanvas.renderAll();
+            }
+
             this.selectedElement = element;
 
+            // Nuevo sistema: actualizar ID seleccionado y mostrar panel flotante
+            this.selectedElementId = elementId;
+            this.showPropertiesPanel = true;
+
+            console.log('✅ Element selected:', elementId, 'Panel visible:', this.showPropertiesPanel);
+
             // Actualizar los inputs con los valores del elemento seleccionado
-            this.updateSVGDimensions();
+            if (element.fabricObject) {
+                this.updateSVGDimensions();
+            }
         },
+
+        // ============================================
+        // FUNCIONES DEL PANEL FLOTANTE DE PROPIEDADES
+        // ============================================
+
+        getSelectedElement() {
+            if (this.isGroupSelection) {
+                // Retornar un objeto que representa el grupo
+                return {
+                    id: 'temp-group',
+                    name: `Grupo (${this.selectedElements.length} elementos)`,
+                    type: 'group',
+                    isGroup: true
+                };
+            }
+            return this.findElementById(this.selectedElementId);
+        },
+
+        updateElementProperty(property, value) {
+            const element = this.getSelectedElement();
+            if (!element) return;
+
+            element[property] = value;
+
+            // Actualizar fabric object si existe
+            if (element.fabricObject) {
+                switch(property) {
+                    case 'x':
+                        element.fabricObject.set('left', value * this.canvasManager.pixelsPerMM);
+                        break;
+                    case 'y':
+                        element.fabricObject.set('top', value * this.canvasManager.pixelsPerMM);
+                        break;
+                    case 'width':
+                        const scaleX = (value * this.canvasManager.pixelsPerMM) / element.fabricObject.getScaledWidth();
+                        element.fabricObject.set('scaleX', element.fabricObject.scaleX * scaleX);
+                        break;
+                    case 'height':
+                        const scaleY = (value * this.canvasManager.pixelsPerMM) / element.fabricObject.getScaledHeight();
+                        element.fabricObject.set('scaleY', element.fabricObject.scaleY * scaleY);
+                        break;
+                    case 'rotation':
+                        element.fabricObject.set('angle', value);
+                        break;
+                }
+                this.canvasManager.fabricCanvas.renderAll();
+            }
+        },
+
+        updateElementConfig(configKey, value) {
+            if (this.isGroupSelection) {
+                // Actualizar todos los elementos del grupo
+                this.selectedElements.forEach(element => {
+                    if (element && element.config) {
+                        element.config[configKey] = value;
+                    }
+                });
+            } else {
+                const element = this.getSelectedElement();
+                if (!element || !element.config) return;
+                element.config[configKey] = value;
+            }
+        },
+
+        toggleElementConfigMode(useGlobal) {
+            if (this.isGroupSelection) {
+                // Aplicar a todos los elementos del grupo
+                this.selectedElements.forEach(element => {
+                    if (!element) return;
+                    if (useGlobal) {
+                        element.config = null;
+                    } else {
+                        element.config = { ...this.globalConfig };
+                    }
+                });
+            } else {
+                const element = this.getSelectedElement();
+                if (!element) return;
+
+                if (useGlobal) {
+                    element.config = null;
+                } else {
+                    element.config = { ...this.globalConfig };
+                }
+            }
+        },
+
+        resetElementConfig() {
+            if (this.isGroupSelection) {
+                // Resetear config de todos los elementos del grupo
+                this.selectedElements.forEach(element => {
+                    if (element) {
+                        element.config = null;
+                    }
+                });
+            } else {
+                const element = this.getSelectedElement();
+                if (!element) return;
+                element.config = null;
+            }
+        },
+
+        getFilteredTools(operationType) {
+            if (!operationType) return [];
+            const categoryMap = {
+                'cnc': 'cnc',
+                'plotter': 'plotter',
+                'pencil': 'pencil'
+            };
+            const category = categoryMap[operationType];
+            return this.tools.filter(t => t.category === category);
+        },
+
+        duplicateElement(elementId) {
+            const element = this.findElementById(elementId);
+            if (!element) return;
+
+            const duplicate = {
+                ...element,
+                id: Date.now(),
+                name: element.name + ' (copia)',
+                x: element.x + 10,
+                y: element.y + 10,
+                config: element.config ? { ...element.config } : null,
+                makerParams: element.makerParams ? { ...element.makerParams } : null
+            };
+
+            // Clonar fabric object si existe
+            if (element.fabricObject) {
+                element.fabricObject.clone((cloned) => {
+                    cloned.set({
+                        left: duplicate.x * this.canvasManager.pixelsPerMM,
+                        top: duplicate.y * this.canvasManager.pixelsPerMM
+                    });
+                    duplicate.fabricObject = cloned;
+                    this.canvasManager.fabricCanvas.add(cloned);
+                    this.canvasManager.fabricCanvas.renderAll();
+                });
+            }
+
+            this.elements.push(duplicate);
+        },
+
+        renameElement(elementId) {
+            const element = this.findElementById(elementId);
+            if (!element) return;
+
+            const newName = prompt('Nuevo nombre:', element.name);
+            if (newName && newName.trim()) {
+                element.name = newName.trim();
+            }
+        },
+
+        toggleProportionalScale() {
+            this.proportionalScale = !this.proportionalScale;
+        },
+
+        makerParamsComponent() {
+            return {
+                params: this.getSelectedElement()?.makerParams || {},
+                updateMakerParams() {
+                    const element = this.getSelectedElement();
+                    if (element) {
+                        element.makerParams = this.params;
+                    }
+                }
+            };
+        },
+
+        // ============================================
+        // FUNCIONES PARA PREVIEW 3D WORKSPACE
+        // ============================================
+
+        play3DAnimation() {
+            if (!this.gcodeGenerated) return;
+            this.viewer3DPlaying = true;
+            // TODO: implementar animación
+            console.log('▶️ Playing 3D animation');
+        },
+
+        pause3DAnimation() {
+            this.viewer3DPlaying = false;
+            console.log('⏸️ Pausing 3D animation');
+        },
+
+        stop3DAnimation() {
+            this.viewer3DPlaying = false;
+            this.animationProgress = 0;
+            console.log('⏹️ Stopping 3D animation');
+        },
+
+        reset3DCamera() {
+            if (globalGCodeViewer) {
+                globalGCodeViewer.resetCamera();
+            }
+        },
+
+        set3DView(viewType) {
+            if (globalGCodeViewer) {
+                globalGCodeViewer.setView(viewType);
+            }
+        },
+
+        // ============================================
+        // FUNCIONES PARA CONNECTION (HEADER)
+        // ============================================
+
+        async connect() {
+            if (!this.serialPort) {
+                alert('Por favor selecciona un puerto serial');
+                return;
+            }
+            const result = await this.serialControl.connect(this.serialPort, this.baudRate);
+            this.connected = result;
+            if (result) {
+                this.addConsoleLine('✅ Conectado a GRBL en ' + this.serialPort);
+            }
+        },
+
+        async disconnect() {
+            await this.serialControl.disconnect();
+            this.connected = false;
+            this.addConsoleLine('🔌 Desconectado');
+        },
+
+        // ============================================
+        // FIN FUNCIONES NUEVAS
+        // ============================================
+
 openToolsModal() {
     this.showToolsModal = true;
     this.toolsModalTab = 'cnc';

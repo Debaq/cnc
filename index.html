@@ -44,114 +44,47 @@
         <link rel="stylesheet" href="css/style.css">
     </head>
     <body class="bg-purple-bg">
-        <div x-data="grblApp()" class="flex h-screen overflow-hidden">
+        <div x-data="grblApp()" class="flex flex-col h-screen overflow-hidden">
 
-            <!-- Left Sidebar - Template Component -->
-            <aside class="w-72 bg-white border-r border-gray-200 flex flex-col" x-template="'templates/components/sidebar.html'"></aside>
+            <!-- Header Horizontal -->
+            <div x-template="'templates/components/header.html'"></div>
 
-            <!-- Main Content -->
-            <main class="flex-1 flex flex-col overflow-hidden">
+            <!-- Main Container -->
+            <div class="flex-1 flex overflow-hidden">
 
-                <!-- Hidden file input for SVG -->
-                <input type="file" accept=".svg" class="hidden"
-                    x-ref="svgInput" @change="handleSVGUpload">
+                <!-- Panel Izquierdo Colapsable (Contextual según workspace) -->
+                <aside x-show="!leftPanelCollapsed"
+                       x-transition:enter="transition ease-out duration-200"
+                       x-transition:enter-start="-translate-x-full"
+                       x-transition:enter-end="translate-x-0"
+                       x-transition:leave="transition ease-in duration-200"
+                       x-transition:leave-start="translate-x-0"
+                       x-transition:leave-end="-translate-x-full"
+                       class="w-80 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+                    <!-- Contenido contextual según el workspace activo -->
+                    <div x-show="currentWorkspace === 'design'" class="flex-1 flex flex-col" x-template="'templates/workspaces/design-panel.html'"></div>
+                    <div x-show="currentWorkspace === 'preview'" class="flex-1 flex flex-col" x-template="'templates/workspaces/preview-panel.html'"></div>
+                    <div x-show="currentWorkspace === 'control'" class="flex-1 flex flex-col" x-template="'templates/components/sidebar.html'"></div>
+                </aside>
 
-                <!-- Workspace Container -->
-                <div class="flex-1 flex overflow-hidden">
+                <!-- Botón Colapsar Panel -->
+                <button @click="leftPanelCollapsed = !leftPanelCollapsed"
+                        class="w-6 bg-gray-100 hover:bg-gray-200 border-r border-gray-200 flex items-center justify-center text-gray-600 hover:text-gray-900 transition"
+                        :title="leftPanelCollapsed ? 'Mostrar panel' : 'Ocultar panel'">
+                    <span x-text="leftPanelCollapsed ? '▶' : '◀'" class="text-xs"></span>
+                </button>
 
-                    <!-- Canvas Panel -->
-                    <div class="flex-1 flex flex-col bg-purple-bg">
+                <!-- Área Central (Canvas maximizado) -->
+                <main class="flex-1 flex flex-col overflow-hidden">
 
-                        <!-- Canvas Toolbar -->
-                        <div
-                            class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
-                            <!-- View Mode Selector -->
-                            <div class="flex items-center gap-2 mr-4">
-                                <button @click="viewMode = 'svg'; currentTab = 'elements'"
-                                    :class="viewMode === 'svg' ? 'bg-purple-medium text-white' : 'bg-gray-100 text-gray-700'"
-                                    class="px-3 py-1 rounded-lg text-sm transition">
-                                    📐 Diseño
-                                </button>
-                                <button @click="switchTo3DView()"
-                                    :class="viewMode === '3d' ? 'bg-purple-medium text-white' : 'bg-gray-100 text-gray-700'"
-                                    :disabled="!gcodeGenerated"
-                                    class="px-3 py-1 rounded-lg text-sm transition disabled:opacity-50 disabled:cursor-not-allowed">
-                                    🎬 Vista 3D
-                                </button>
-                            </div>
+                    <!-- Hidden file input for SVG -->
+                    <input type="file" accept=".svg" class="hidden"
+                        x-ref="svgInput" @change="handleSVGUpload">
 
-                            <div class="flex items-center gap-2">
-                                <div class="flex items-center gap-3">
-                                    <!-- Position controls -->
-                                    <div class="flex items-center gap-1">
-                                        <span class="text-xs text-gray-600 font-semibold">X:</span>
-                                        <input type="number"
-                                            x-model.number="svgX"
-                                            @input="updateSVGPosition()"
-                                            step="1"
-                                            class="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right">
-                                        <span class="text-xs text-gray-500">mm</span>
-                                    </div>
-
-                                    <div class="flex items-center gap-1">
-                                        <span class="text-xs text-gray-600 font-semibold">Y:</span>
-                                        <input type="number"
-                                            x-model.number="svgY"
-                                            @input="updateSVGPosition()"
-                                            step="1"
-                                            class="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right">
-                                        <span class="text-xs text-gray-500">mm</span>
-                                    </div>
-
-                                    <div class="h-6 w-px bg-gray-300"></div>
-
-                                    <!-- Size controls -->
-                                    <div class="flex items-center gap-1">
-                                        <span
-                                            class="text-xs text-gray-600">W:</span>
-                                        <input type="number"
-                                            x-model.number="svgWidth"
-                                            @input="updateSVGWidth()"
-                                            step="1"
-                                            min="1"
-                                            class="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right">
-                                        <span
-                                            class="text-xs text-gray-500">mm</span>
-                                    </div>
-
-                                    <button
-                                        @click="proportionalScale = !proportionalScale"
-                                        :class="proportionalScale ? 'bg-purple-medium text-white' : 'bg-gray-200'"
-                                        class="px-2 py-1 rounded transition"
-                                        title="Escala proporcional">
-                                        <span
-                                            x-show="proportionalScale">🔒</span>
-                                        <span
-                                            x-show="!proportionalScale">🔓</span>
-                                    </button>
-
-                                    <div class="flex items-center gap-1">
-                                        <span
-                                            class="text-xs text-gray-600">H:</span>
-                                        <input type="number"
-                                            x-model.number="svgHeight"
-                                            @input="updateSVGHeight()"
-                                            step="1"
-                                            min="1"
-                                            class="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right">
-                                        <span
-                                            class="text-xs text-gray-500">mm</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div
-                                class="flex items-center gap-4 text-sm text-gray-600">
-                                <span>Área: <span x-text="workAreaSize"></span>
-                                    mm</span>
-                                <button @click="openModal('workArea')"
-                                    class="hover:text-purple-medium">✏️</button>
-                            </div>
+                    <!-- Canvas Toolbar (simplificado) -->
+                    <div class="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
+                        <!-- Controles de Transformación (solo para workspace diseño) -->
+                        <div x-show="currentWorkspace === 'design'" class="flex items-center gap-2">
 
                             <div class="flex items-center gap-2">
                                 <!-- Herramientas de Transformación -->
@@ -185,75 +118,63 @@
                                 </button>
                             </div>
                         </div>
+                    </div>
 
-                        <!-- Canvas Area - SVG & 3D Views -->
-                        <div class="flex-1 p-4 relative overflow-hidden">
-                            <!-- SVG Canvas -->
-                            <div x-show="viewMode === 'svg'" style="width: 100%; height: 100%;">
-                                <canvas x-ref="canvas"
-                                    class="rounded-lg shadow-lg" style="display: block;"></canvas>
-                            </div>
+                    <!-- Canvas Area (workspace-dependent) -->
+                    <div class="flex-1 p-4 relative overflow-hidden bg-purple-bg">
+                        <!-- SVG Canvas (workspace: design) -->
+                        <div x-show="currentWorkspace === 'design'" style="width: 100%; height: 100%;">
+                            <canvas x-ref="canvas"
+                                class="rounded-lg shadow-lg" style="display: block;"></canvas>
+                        </div>
 
-                            <!-- 3D Viewer Canvas -->
-                            <div x-show="viewMode === '3d'" class="w-full h-full bg-gray-900 rounded-lg shadow-lg relative">
-                                <canvas x-ref="viewer3d"
-                                    class="w-full h-full rounded-lg"></canvas>
+                        <!-- 3D Viewer Canvas (workspace: preview) -->
+                        <div x-show="currentWorkspace === 'preview'" class="w-full h-full bg-gray-900 rounded-lg shadow-lg relative">
+                            <canvas x-ref="viewer3d"
+                                class="w-full h-full rounded-lg"></canvas>
 
-                                <!-- Loading overlay for 3D view -->
-                                <div x-show="!gcodeGenerated"
-                                    class="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-90 rounded-lg">
-                                    <div class="text-center text-gray-400">
-                                        <div class="text-6xl mb-4">🎬</div>
-                                        <p class="text-lg font-semibold">Vista 3D no disponible</p>
-                                        <p class="text-sm mt-2">Genera G-code primero para ver</p>
-                                        <p class="text-sm">la visualización 3D de las trayectorias</p>
-                                    </div>
+                            <!-- Loading overlay for 3D view -->
+                            <div x-show="!gcodeGenerated"
+                                class="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-90 rounded-lg">
+                                <div class="text-center text-gray-400">
+                                    <div class="text-6xl mb-4">🎬</div>
+                                    <p class="text-lg font-semibold">Vista 3D no disponible</p>
+                                    <p class="text-sm mt-2">Genera G-code primero para ver</p>
+                                    <p class="text-sm">la visualización 3D de las trayectorias</p>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Canvas Footer -->
-                        <div
-                            class="bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-between text-sm text-gray-600">
-                            <div class="flex items-center gap-6">
-                                <span>Posición: <span
-                                        x-text="svgPosition"></span></span>
-                                <span>Escala: <span
-                                        x-text="svgScale"></span></span>
-                                <span>Rotación: <span
-                                        x-text="svgRotation"></span></span>
+                        <!-- Control/Console View (workspace: control) -->
+                        <div x-show="currentWorkspace === 'control'" class="w-full h-full bg-white rounded-lg shadow-lg p-6">
+                            <div class="text-center text-gray-500">
+                                <div class="text-6xl mb-4">🕹️</div>
+                                <p class="text-lg font-semibold">Área de Control GRBL</p>
+                                <p class="text-sm mt-2">Esta vista estará disponible próximamente</p>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Right Panel -->
-                    <div
-                        class="w-96 bg-white border-l border-gray-200 flex flex-col">
-
-                        <!-- Tabs -->
-                        <div class="flex border-b border-gray-200 bg-gray-50">
-                            <template x-for="tab in tabs" :key="tab.id">
-                                <button @click="currentTab = tab.id"
-                                    :class="currentTab === tab.id ? 'border-b-2 border-purple-medium bg-white font-semibold' : 'text-gray-600'"
-                                    class="flex-1 px-4 py-3 text-sm transition"
-                                    x-text="tab.icon + ' ' + tab.name">
-                                </button>
-                            </template>
-                        </div>
-
-                        <!-- Tab Content -->
-                        <div class="flex-1 overflow-y-auto p-6" x-template="'templates/tabs/all-tabs.html'">
-
+                    <!-- Canvas Footer -->
+                    <div class="bg-white border-t border-gray-200 px-4 py-2 flex items-center justify-between text-xs text-gray-600">
+                        <div class="flex items-center gap-6">
+                            <span>Posición: <span x-text="svgPosition"></span></span>
+                            <span>Escala: <span x-text="svgScale"></span></span>
+                            <span>Rotación: <span x-text="svgRotation"></span></span>
                         </div>
                     </div>
+                </main>
 
-                </div>
-            </main>
+            </div><!-- Fin Main Container -->
 
-        </div>
+            <!-- Panel Flotante de Propiedades -->
+            <div x-template="'templates/components/floating-properties-panel.html'"></div>
+
+        </div><!-- Fin App Container -->
 
         <!-- Modals - Templates -->
         <div x-template="'templates/modals/work-area-modal.html'"></div>
+        <div x-template="'templates/modals/global-config-modal.html'"></div>
         <div x-template="'templates/modals/grbl-settings-modal.html'"></div>
         <div x-template="'templates/modals/help-modal.html'"></div>
         <div x-template="'templates/modals/tools-modal.html'"></div>

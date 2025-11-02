@@ -322,12 +322,108 @@ class CanvasManager {
 
         // Listeners para actualizar inputs al seleccionar un objeto
         this.fabricCanvas.on('selection:created', (e) => {
+            if (this.app) {
+                // Actualizar dimensiones
+                if (this.app.updateSVGDimensions) {
+                    this.app.updateSVGDimensions();
+                }
+
+                // Detectar si es selección múltiple
+                const selectedObjects = e.selected || [e.target];
+
+                if (selectedObjects.length > 1) {
+                    // Crear grupo temporal
+                    const groupElements = selectedObjects
+                        .map(obj => this.app.elements.find(el => el.id === obj?.elementId))
+                        .filter(el => el);
+
+                    this.app.selectedElementId = 'temp-group';
+                    this.app.selectedElements = groupElements;
+                    this.app.showPropertiesPanel = true;
+                    this.app.isGroupSelection = true;
+                } else {
+                    // Selección individual
+                    const selectedObj = selectedObjects[0];
+                    const element = this.app.elements.find(el => el.id === selectedObj?.elementId);
+
+                    if (element) {
+                        this.app.selectedElementId = element.id;
+                        this.app.showPropertiesPanel = true;
+                        this.app.selectedElement = element;
+                        this.app.selectedElements = [element];
+                        this.app.isGroupSelection = false;
+                    }
+                }
+            }
+        });
+
+        this.fabricCanvas.on('selection:updated', (e) => {
+            if (this.app) {
+                // Actualizar dimensiones
+                if (this.app.updateSVGDimensions) {
+                    this.app.updateSVGDimensions();
+                }
+
+                // Detectar si es selección múltiple
+                const selectedObjects = e.selected || [e.target];
+
+                if (selectedObjects.length > 1) {
+                    // Crear grupo temporal
+                    const groupElements = selectedObjects
+                        .map(obj => this.app.elements.find(el => el.id === obj?.elementId))
+                        .filter(el => el);
+
+                    this.app.selectedElementId = 'temp-group';
+                    this.app.selectedElements = groupElements;
+                    this.app.showPropertiesPanel = true;
+                    this.app.isGroupSelection = true;
+                } else {
+                    // Selección individual
+                    const selectedObj = selectedObjects[0];
+                    const element = this.app.elements.find(el => el.id === selectedObj?.elementId);
+
+                    if (element) {
+                        this.app.selectedElementId = element.id;
+                        this.app.showPropertiesPanel = true;
+                        this.app.selectedElement = element;
+                        this.app.selectedElements = [element];
+                        this.app.isGroupSelection = false;
+                    }
+                }
+            }
+        });
+
+        // Ocultar panel cuando se deselecciona
+        this.fabricCanvas.on('selection:cleared', (e) => {
+            if (this.app) {
+                this.app.selectedElementId = null;
+                this.app.showPropertiesPanel = false;
+                this.app.selectedElement = null;
+                this.app.selectedElements = [];
+                this.app.isGroupSelection = false;
+            }
+        });
+
+        // Actualizar panel cuando el objeto se modifica
+        this.fabricCanvas.on('object:modified', (e) => {
             if (this.app && this.app.updateSVGDimensions) {
                 this.app.updateSVGDimensions();
             }
         });
 
-        this.fabricCanvas.on('selection:updated', (e) => {
+        this.fabricCanvas.on('object:moving', (e) => {
+            if (this.app && this.app.updateSVGDimensions) {
+                this.app.updateSVGDimensions();
+            }
+        });
+
+        this.fabricCanvas.on('object:scaling', (e) => {
+            if (this.app && this.app.updateSVGDimensions) {
+                this.app.updateSVGDimensions();
+            }
+        });
+
+        this.fabricCanvas.on('object:rotating', (e) => {
             if (this.app && this.app.updateSVGDimensions) {
                 this.app.updateSVGDimensions();
             }
@@ -474,7 +570,7 @@ class CanvasManager {
         console.log('✅ Work area changed to:', width, 'x', height, 'mm');
     }
 
-    async loadSVG(file) {
+    async loadSVG(file, elementId = null) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
 
@@ -560,6 +656,11 @@ class CanvasManager {
                         x: bbox.left,
                         y: bbox.top
                     };
+
+                    // Si se proporcionó un elementId, asignarlo al objeto
+                    if (elementId) {
+                        this.svgGroup.set('elementId', elementId);
+                    }
 
                     this.fabricCanvas.add(this.svgGroup);
                     this.fabricCanvas.setActiveObject(this.svgGroup);
