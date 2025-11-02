@@ -1,7 +1,7 @@
-# CNC GRBL Web Control Pro v3.0 - UI Documentation Index
+# CNC GRBL Web Control Pro v4.0 - UI Documentation Index
 
 ## Overview
-This directory now contains comprehensive documentation of the GRBL Web Control Pro v3.0 user interface structure, organization, and architecture.
+This directory now contains comprehensive documentation of the GRBL Web Control Pro v4.0 user interface structure, organization, and architecture.
 
 ## Documentation Files
 
@@ -277,7 +277,7 @@ When modifying the UI:
 
 ## Summary
 
-This documentation package provides three complementary views of the GRBL Web Control Pro v3.0 UI:
+This documentation package provides three complementary views of the GRBL Web Control Pro v4.0 UI:
 
 1. **UI_STRUCTURE_REPORT.md** - Comprehensive reference with every component detailed
 2. **COMPONENT_HIERARCHY.md** - Architectural overview with data models and flows
@@ -288,5 +288,5 @@ Together, they provide complete coverage from high-level understanding to detail
 ---
 
 **Generated:** November 2, 2024
-**Version:** GRBL Web Control Pro v3.0
+**Version:** GRBL Web Control Pro v4.0
 **Framework:** Alpine.js + Tailwind CSS + Fabric.js + Three.js

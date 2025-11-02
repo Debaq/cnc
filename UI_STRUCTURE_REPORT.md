@@ -1,7 +1,7 @@
-# CNC GRBL Web Control Pro v3.0 - UI Structure Analysis
+# CNC GRBL Web Control Pro v4.0 - UI Structure Analysis
 
 ## Project Overview
-**Title:** GRBL Web Control Pro v3.0  
+**Title:** GRBL Web Control Pro v4.0  
 **Location:** `/home/nick/Escritorio/Proyectos/cnc/`  
 **Main Framework:** Alpine.js v3.13.3 (Reactive UI)  
 **Styling:** Tailwind CSS CDN  
@@ -19,7 +19,7 @@ The application follows a **three-column layout pattern**:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    GRBL Control Pro v3.0                     │
+│                    GRBL Control Pro v4.0                     │
 ├──────────────┬──────────────────────────────┬────────────────┤
 │              │                              │                │
 │ LEFT SIDEBAR │    CENTER CANVAS AREA        │  RIGHT PANEL   │
@@ -48,7 +48,7 @@ The application follows a **three-column layout pattern**:
 ### 2.1 Header Section
 - **Logo & GitHub Link**
   - App Title: "GRBL Control Pro"
-  - Version Badge: "v3.0"
+  - Version Badge: "v4.0"
   - GitHub Link with SVG icon
 
 ### 2.2 Connection Status Panel
@@ -550,7 +550,7 @@ Visual Feedback
 
 ## 13. CONCLUSION
 
-The GRBL Web Control Pro v3.0 UI is a well-structured, component-based interface that provides:
+The GRBL Web Control Pro v4.0 UI is a well-structured, component-based interface that provides:
 
 1. **Left Sidebar:** Machine state and quick access controls
 2. **Center Canvas:** Design workspace with dual view modes

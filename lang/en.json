@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "GRBL Control Pro",
-    "version": "v3.0"
+    "version": "v4.0"
   },
   "connection": {
     "connected": "Connected",
