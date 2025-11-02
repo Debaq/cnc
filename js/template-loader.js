@@ -77,25 +77,32 @@ document.addEventListener('alpine:init', () => {
             if (path && !loaded) {
                 loaded = true;
                 window.templateLoader.load(path).then(html => {
-                    el.innerHTML = html;
+                    // Usar Alpine.mutateDom para modificar el DOM de forma segura
+                    if (typeof Alpine !== 'undefined' && Alpine.mutateDom) {
+                        Alpine.mutateDom(() => {
+                            el.innerHTML = html;
 
-                    // Si el elemento está dentro de un contexto Alpine (x-data),
-                    // necesitamos inicializar manualmente los hijos
-                    queueMicrotask(() => {
-                        if (typeof Alpine !== 'undefined' && Alpine.initTree) {
-                            // Inicializar cada hijo del elemento, no el elemento mismo
+                            // Marcar este template como cargado para evitar reinicialización
+                            el.setAttribute('data-template-loaded', 'true');
+                        });
+
+                        // Después de mutar el DOM, inicializar Alpine en los nuevos elementos
+                        queueMicrotask(() => {
                             Array.from(el.children).forEach(child => {
-                                try {
-                                    // Solo inicializar si NO ha sido inicializado antes
-                                    if (!child._x_dataStack) {
+                                // Solo inicializar si no ha sido marcado como inicializado
+                                if (!child.hasAttribute('data-alpine-initialized')) {
+                                    try {
+                                        child.setAttribute('data-alpine-initialized', 'true');
                                         Alpine.initTree(child);
+                                    } catch (e) {
+                                        console.warn('Alpine.initTree failed:', e);
                                     }
-                                } catch (e) {
-                                    console.warn('Alpine.initTree failed for child:', child, e);
                                 }
                             });
-                        }
-                    });
+                        });
+                    } else {
+                        el.innerHTML = html;
+                    }
                 });
             }
         });

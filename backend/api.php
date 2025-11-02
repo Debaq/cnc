@@ -205,21 +205,27 @@ function getMaterials() {
 
 function saveMaterial($data) {
     global $materialsFile;
-    
+
     if (!isset($data['data'])) {
         respondError('Material data required');
     }
-    
+
     $material = $data['data'];
-    
+
     // Validate required fields
-    $required = ['name', 'category', 'feedRate', 'rpm'];
+    $required = ['name', 'category'];
     foreach ($required as $field) {
         if (!isset($material[$field])) {
             respondError("Missing required field: $field");
         }
     }
-    
+
+    // Validate category
+    $validCategories = ['wood', 'plastic', 'metal'];
+    if (!in_array($material['category'], $validCategories)) {
+        respondError('Invalid category');
+    }
+
     // Load existing materials
     $materials = json_decode(file_get_contents($materialsFile), true);
     

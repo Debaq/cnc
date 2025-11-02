@@ -56,6 +56,13 @@
             <span>Herramientas</span>
         </button>
         <button
+            @click="openModal('materials')"
+            class="px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition flex items-center gap-1.5"
+            title="Biblioteca de Materiales">
+            <span>📦</span>
+            <span>Materiales</span>
+        </button>
+        <button
             @click="openModal('workArea')"
             class="px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition flex items-center gap-1.5"
             title="Configurar Área de Trabajo">
@@ -120,7 +127,7 @@
 
     <!-- Enlaces Externos -->
     <div class="flex items-center gap-2">
-        <a href="https://github.com/tu-usuario/cnc-grbl-control"
+        <a href="https://github.com/debaq/cnc"
            target="_blank"
            class="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"
            title="GitHub Repository">

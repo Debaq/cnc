@@ -176,6 +176,26 @@ window.grblApp = function() {
         authPassword: '',
         toolsStatus: null,
 
+        // Modal Materials
+        showMaterialsModal: false,
+        materialsModalTab: 'wood', // 'wood', 'plastic', 'metal'
+        editingMaterial: null,
+        materialForm: {
+            name: '',
+            thickness: 3,
+            description: '',
+            color: '#D2B48C',
+            cncFeedRate: 1200,
+            cncPlungeRate: 600,
+            cncRpm: 12000,
+            cncDepthPerPass: 2,
+            laserCutPower: 80,
+            laserCutSpeed: 300,
+            laserEngravePower: 40,
+            laserEngraveSpeed: 1500
+        },
+        materialsStatus: null,
+
         // Modal system
         activeModal: null,
 
@@ -826,6 +846,8 @@ window.grblApp = function() {
                 this.openGRBLModal();
             } else if (modalId === 'tools') {
                 this.openToolsModal();
+            } else if (modalId === 'materials') {
+                this.openMaterialsModal();
             } else if (modalId === 'globalConfig') {
                 this.activeModal = 'globalConfig';
             } else {
@@ -1620,6 +1642,148 @@ window.grblApp = function() {
 
         getToolsByCategory(category) {
             return this.tools.filter(t => t.category === category);
+        },
+
+        // ====================================
+        // MATERIALS MODAL METHODS
+        // ====================================
+
+        openMaterialsModal() {
+            this.showMaterialsModal = true;
+            this.materialsModalTab = 'wood';
+            this.materialsStatus = null;
+        },
+
+        closeMaterialsModal() {
+            this.showMaterialsModal = false;
+            this.editingMaterial = null;
+            this.resetMaterialForm();
+        },
+
+        resetMaterialForm() {
+            this.materialForm = {
+                name: '',
+                thickness: 3,
+                description: '',
+                color: '#D2B48C',
+                cncFeedRate: 1200,
+                cncPlungeRate: 600,
+                cncRpm: 12000,
+                cncDepthPerPass: 2,
+                laserCutPower: 80,
+                laserCutSpeed: 300,
+                laserEngravePower: 40,
+                laserEngraveSpeed: 1500
+            };
+        },
+
+        editMaterial(material) {
+            this.editingMaterial = material;
+            this.materialForm = {
+                name: material.name,
+                thickness: material.thickness,
+                description: material.description || '',
+                color: material.color,
+                cncFeedRate: material.cnc?.feedRate || 1200,
+                cncPlungeRate: material.cnc?.plungeRate || 600,
+                cncRpm: material.cnc?.rpm || 12000,
+                cncDepthPerPass: material.cnc?.depthPerPass || 2,
+                laserCutPower: material.laser?.cutPower || 80,
+                laserCutSpeed: material.laser?.cutSpeed || 300,
+                laserEngravePower: material.laser?.engravePower || 40,
+                laserEngraveSpeed: material.laser?.engraveSpeed || 1500
+            };
+        },
+
+        async saveMaterial() {
+            if (!this.authPassword) {
+                this.materialsStatus = { type: 'error', message: '❌ Se requiere contraseña' };
+                return;
+            }
+
+            const materialData = {
+                id: this.editingMaterial?.id || undefined,
+                name: this.materialForm.name,
+                category: this.materialsModalTab,
+                thickness: this.materialForm.thickness,
+                description: this.materialForm.description,
+                color: this.materialForm.color,
+                cnc: {
+                    feedRate: this.materialForm.cncFeedRate,
+                    plungeRate: this.materialForm.cncPlungeRate,
+                    rpm: this.materialForm.cncRpm,
+                    depthPerPass: this.materialForm.cncDepthPerPass
+                },
+                laser: {
+                    cutPower: this.materialForm.laserCutPower,
+                    cutSpeed: this.materialForm.laserCutSpeed,
+                    engravePower: this.materialForm.laserEngravePower,
+                    engraveSpeed: this.materialForm.laserEngraveSpeed
+                }
+            };
+
+            try {
+                const response = await fetch('backend/api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'saveMaterial',
+                        password: this.authPassword,
+                        data: materialData
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    await this.libraryManager.loadMaterials();
+                    this.materials = this.libraryManager.materials;
+                    this.materialsStatus = { type: 'success', message: '✅ Material guardado' };
+                    this.resetMaterialForm();
+                    this.editingMaterial = null;
+                } else {
+                    this.materialsStatus = { type: 'error', message: '❌ ' + result.message };
+                }
+            } catch (error) {
+                this.materialsStatus = { type: 'error', message: '❌ Error de conexión' };
+            }
+        },
+
+        async deleteMaterial(materialId) {
+            if (!this.authPassword) {
+                this.materialsStatus = { type: 'error', message: '❌ Se requiere contraseña' };
+                return;
+            }
+
+            if (!confirm('¿Eliminar este material?')) return;
+
+            try {
+                const response = await fetch('backend/api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'deleteMaterial',
+                        password: this.authPassword,
+                        id: materialId
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    await this.libraryManager.loadMaterials();
+                    this.materials = this.libraryManager.materials;
+                    this.materialsStatus = { type: 'success', message: '✅ Material eliminado' };
+                } else {
+                    this.materialsStatus = { type: 'error', message: '❌ ' + result.message };
+                }
+            } catch (error) {
+                this.materialsStatus = { type: 'error', message: '❌ Error de conexión' };
+            }
+        },
+
+        getMaterialsByCategory(category) {
+            return this.materials.filter(m => m.category === category);
         },
 
         // ====================================
