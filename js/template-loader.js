@@ -78,7 +78,24 @@ document.addEventListener('alpine:init', () => {
                 loaded = true;
                 window.templateLoader.load(path).then(html => {
                     el.innerHTML = html;
-                    // NO usar Alpine.initTree - Alpine lo hace automáticamente
+
+                    // Si el elemento está dentro de un contexto Alpine (x-data),
+                    // necesitamos inicializar manualmente los hijos
+                    queueMicrotask(() => {
+                        if (typeof Alpine !== 'undefined' && Alpine.initTree) {
+                            // Inicializar cada hijo del elemento, no el elemento mismo
+                            Array.from(el.children).forEach(child => {
+                                try {
+                                    // Solo inicializar si NO ha sido inicializado antes
+                                    if (!child._x_dataStack) {
+                                        Alpine.initTree(child);
+                                    }
+                                } catch (e) {
+                                    console.warn('Alpine.initTree failed for child:', child, e);
+                                }
+                            });
+                        }
+                    });
                 });
             }
         });

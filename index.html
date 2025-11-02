@@ -170,14 +170,14 @@
             <!-- Panel Flotante de Propiedades -->
             <div x-template="'templates/components/floating-properties-panel.html'"></div>
 
-        </div><!-- Fin App Container -->
+            <!-- Modals - Templates cargados dentro del contexto Alpine -->
+            <div x-template="'templates/modals/work-area-modal.html'"></div>
+            <div x-template="'templates/modals/global-config-modal.html'"></div>
+            <div x-template="'templates/modals/grbl-settings-modal.html'"></div>
+            <div x-template="'templates/modals/help-modal.html'"></div>
+            <div x-template="'templates/modals/tools-modal.html'"></div>
 
-        <!-- Modals - Templates -->
-        <div x-template="'templates/modals/work-area-modal.html'"></div>
-        <div x-template="'templates/modals/global-config-modal.html'"></div>
-        <div x-template="'templates/modals/grbl-settings-modal.html'"></div>
-        <div x-template="'templates/modals/help-modal.html'"></div>
-        <div x-template="'templates/modals/tools-modal.html'"></div>
+        </div><!-- Fin App Container -->
 
         <!-- Scripts - Cargar en orden correcto -->
         <script src="js/i18n.js"></script>
