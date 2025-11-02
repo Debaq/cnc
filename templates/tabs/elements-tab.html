@@ -1,0 +1,655 @@
+<div x-show="currentTab === 'elements'" class="space-y-4">
+    <!-- Global Config -->
+    <div class="bg-purple-ultra-pale rounded-lg p-4">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-purple-dark">⚙️ Configuración Global</h3>
+            <button @click="applyGlobalConfigToAll()"
+                class="text-xs px-2 py-1 bg-purple-medium hover:bg-purple-dark text-white rounded transition"
+                title="Aplicar esta configuración a todos los elementos">
+                Aplicar a Todos
+            </button>
+        </div>
+
+        <div class="space-y-3">
+            <!-- Tipo de Operación -->
+            <div>
+                <label class="text-xs text-gray-600 font-medium">Tipo de Operación:</label>
+                <select x-model="globalConfig.operationType"
+                    class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm mt-1">
+                    <option value="cnc">🔧 CNC Fresado</option>
+                    <option value="laser">⚡ Láser</option>
+                    <option value="plotter">✂️ Plotter Corte</option>
+                    <option value="pencil">✏️ Lápiz/Marcador</option>
+                </select>
+            </div>
+
+            <!-- Herramienta (para CNC, Plotter, Pencil) -->
+            <div x-show="globalConfig.operationType !== 'laser'">
+                <label class="text-xs text-gray-600 font-medium">Herramienta:</label>
+                <select x-model="globalConfig.tool"
+                    class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm mt-1">
+                    <option value="">Sin herramienta</option>
+                    <template x-for="tool in tools.filter(t =>
+                        (globalConfig.operationType === 'cnc' && t.category === 'cnc') ||
+                        (globalConfig.operationType === 'plotter' && t.category === 'plotter') ||
+                        (globalConfig.operationType === 'pencil' && t.category === 'pencil')
+                    )" :key="tool.id">
+                        <option :value="tool.name" x-text="tool.name"></option>
+                    </template>
+                </select>
+            </div>
+
+            <!-- Parámetros específicos de CNC -->
+            <template x-if="globalConfig.operationType === 'cnc'">
+                <div class="space-y-3 pt-2 border-t border-purple-pale">
+                    <!-- Tipo de Trabajo -->
+                    <div>
+                        <label class="text-xs text-gray-600 font-medium">Tipo de Trabajo:</label>
+                        <select x-model="globalConfig.workType"
+                            class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm mt-1">
+                            <option value="outline">Contorno (sobre línea)</option>
+                            <option value="inside">Interior (por dentro)</option>
+                            <option value="outside">Exterior (por fuera)</option>
+                            <option value="pocket">Cajeado (vaciar interior)</option>
+                        </select>
+                    </div>
+
+                    <!-- Compensación de Herramienta -->
+                    <div>
+                        <label class="text-xs text-gray-600 font-medium">Compensación:</label>
+                        <select x-model="globalConfig.compensation"
+                            class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm mt-1">
+                            <option value="center">Centro</option>
+                            <option value="inside">Interior</option>
+                            <option value="outside">Exterior</option>
+                        </select>
+                    </div>
+
+                    <!-- Profundidad y Paso -->
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs text-gray-600">Profundidad (mm):</label>
+                            <input type="number" x-model.number="globalConfig.depth" step="0.5"
+                                class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-600">Paso/Pasada (mm):</label>
+                            <input type="number" x-model.number="globalConfig.depthStep" step="0.1" min="0.1"
+                                class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                        </div>
+                    </div>
+
+                    <!-- Diámetro de Herramienta -->
+                    <div>
+                        <label class="text-xs text-gray-600">Diámetro Herramienta (mm):</label>
+                        <input type="number" x-model.number="globalConfig.toolDiameter" step="0.1"
+                            class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                    </div>
+
+                    <!-- Velocidades CNC -->
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs text-gray-600">Feed (mm/min):</label>
+                            <input type="number" x-model.number="globalConfig.feedRate"
+                                class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-600">Plunge (mm/min):</label>
+                            <input type="number" x-model.number="globalConfig.plungeRate"
+                                class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="text-xs text-gray-600">Spindle RPM:</label>
+                        <input type="number" x-model.number="globalConfig.spindleRPM"
+                            class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                    </div>
+                </div>
+            </template>
+
+            <!-- Parámetros específicos de Láser -->
+            <template x-if="globalConfig.operationType === 'laser'">
+                <div class="space-y-3 pt-2 border-t border-purple-pale">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs text-gray-600">Potencia (%):</label>
+                            <input type="number" x-model.number="globalConfig.laserPower"
+                                min="0" max="100"
+                                class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-600">Pasadas:</label>
+                            <input type="number" x-model.number="globalConfig.passes" min="1"
+                                class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-600">Velocidad (mm/min):</label>
+                        <input type="number" x-model.number="globalConfig.feedRate"
+                            class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                    </div>
+                </div>
+            </template>
+
+            <!-- Parámetros específicos de Plotter -->
+            <template x-if="globalConfig.operationType === 'plotter'">
+                <div class="space-y-3 pt-2 border-t border-purple-pale">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs text-gray-600">Presión (1-33):</label>
+                            <input type="number" x-model.number="globalConfig.pressure"
+                                min="1" max="33"
+                                class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-600">Velocidad (mm/s):</label>
+                            <input type="number" x-model.number="globalConfig.speed"
+                                class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-600">Pasadas:</label>
+                        <input type="number" x-model.number="globalConfig.passes" min="1"
+                            class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                    </div>
+                </div>
+            </template>
+
+            <!-- Parámetros específicos de Lápiz -->
+            <template x-if="globalConfig.operationType === 'pencil'">
+                <div class="space-y-3 pt-2 border-t border-purple-pale">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs text-gray-600">Presión Z (mm):</label>
+                            <input type="number" x-model.number="globalConfig.pressureZ" step="0.1"
+                                class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-600">Velocidad (mm/min):</label>
+                            <input type="number" x-model.number="globalConfig.speed"
+                                class="w-full px-2 py-1 border border-gray-300 rounded text-sm mt-1">
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Elements List -->
+    <div>
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-purple-dark">📋 Elementos (<span x-text="elements.length"></span>)</h3>
+            <!-- Menú Agregar -->
+            <div class="relative" x-data="{open: false}">
+                <button @click="open = !open"
+                    class="flex items-center gap-1 px-3 py-1.5 bg-purple-medium hover:bg-purple-dark text-white rounded-lg text-xs font-medium transition">
+                    <span>➕</span>
+                    <span>Agregar</span>
+                    <span x-text="open ? '▲' : '▼'" class="text-xs"></span>
+                </button>
+                <div x-show="open" @click.away="open = false"
+                    x-transition
+                    class="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                    <button @click="loadSVG(); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left border-b border-gray-200 font-semibold">
+                        <span>📁</span>
+                        <span>Cargar SVG</span>
+                    </button>
+
+                    <!-- Maker.js Models -->
+                    <div class="px-3 py-2 text-xs font-bold text-purple-dark bg-purple-ultra-pale">
+                        🔷 Modelos Maker.js
+                    </div>
+                    <button @click="addMakerModel('Rectangle'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>▭</span>
+                        <span>Rectángulo</span>
+                    </button>
+                    <button @click="addMakerModel('Square'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>□</span>
+                        <span>Cuadrado</span>
+                    </button>
+                    <button @click="addMakerModel('RoundRectangle'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>▢</span>
+                        <span>Rectángulo Redondeado</span>
+                    </button>
+                    <button @click="addMakerModel('Oval'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>⬭</span>
+                        <span>Óvalo</span>
+                    </button>
+                    <button @click="addMakerModel('Ellipse'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>⬯</span>
+                        <span>Elipse</span>
+                    </button>
+                    <button @click="addMakerModel('Ring'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>◯</span>
+                        <span>Anillo</span>
+                    </button>
+                    <button @click="addMakerModel('Polygon'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>⬡</span>
+                        <span>Polígono</span>
+                    </button>
+                    <button @click="addMakerModel('Star'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>⭐</span>
+                        <span>Estrella</span>
+                    </button>
+                    <button @click="addMakerModel('Slot'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>⬬</span>
+                        <span>Ranura</span>
+                    </button>
+                    <button @click="addMakerModel('Dome'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>⌒</span>
+                        <span>Domo</span>
+                    </button>
+                    <button @click="addMakerModel('BoltCircle'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>⚙️</span>
+                        <span>Círculo de Tornillos</span>
+                    </button>
+                    <button @click="addMakerModel('BoltRectangle'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>▦</span>
+                        <span>Rect. de Tornillos</span>
+                    </button>
+                    <button @click="addMakerModel('Text'); open = false"
+                        class="w-full flex items-center gap-2 px-4 py-2 hover:bg-purple-ultra-pale transition text-sm text-left">
+                        <span>📝</span>
+                        <span>Texto</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-2 max-h-96 overflow-y-auto">
+            <template x-for="element in elements" :key="element.id">
+                <div class="border rounded-lg p-2 bg-white">
+                    <!-- Element Header -->
+                    <div class="flex items-center gap-2 cursor-pointer hover:bg-purple-ultra-pale p-1 rounded"
+                         @click="selectElement(element.id)">
+                        <button @click.stop="toggleElementVisibility(element.id)"
+                            class="text-lg" x-text="element.visible ? '👁️' : '👁️‍🗨️'"></button>
+                        <button @click.stop="toggleElementLock(element.id)"
+                            class="text-lg" x-text="element.locked ? '🔒' : '🔓'"></button>
+                        <span class="text-lg"
+                            x-text="element.type === 'svg' ? '📁' : element.type === 'maker' ? '🔷' : element.type === 'rect' ? '🟦' : element.type === 'circle' ? '⭕' : element.type === 'line' ? '➖' : '❓'"></span>
+                        <span class="flex-1 text-sm font-medium" x-text="element.name"></span>
+
+                        <!-- Botón expandir config -->
+                        <button @click.stop="element.showConfig = !element.showConfig"
+                            class="text-xs px-2 py-1 bg-purple-ultra-pale rounded hover:bg-purple-pale">
+                            <span x-text="element.showConfig ? '🔼' : '⚙️'"></span>
+                        </button>
+
+                        <button @click.stop="toggleExpandElement(element.id)"
+                            x-show="element.type === 'svg'"
+                            class="text-xs px-2 py-1 bg-gray-100 rounded"
+                            x-text="element.expanded ? '🔽' : '📁'"></button>
+                        <button @click.stop="deleteElement(element.id)"
+                            class="text-red-500 hover:text-red-700 text-xs">🗑️</button>
+                    </div>
+
+                    <!-- Element Config Panel (NUEVO) -->
+                    <div x-show="element.showConfig"
+                         x-transition
+                         class="mt-2 p-3 bg-purple-ultra-pale rounded-lg space-y-2">
+
+                        <!-- Toggle: Usar config global o propia -->
+                        <label class="flex items-center gap-2 text-xs cursor-pointer">
+                            <input type="checkbox"
+                                   :checked="!element.config"
+                                   @change="element.config = $event.target.checked ? null : {...globalConfig}">
+                            <span class="font-medium">Heredar configuración global</span>
+                        </label>
+
+                        <!-- Config Form (solo si tiene config propia) -->
+                        <div x-show="element.config" class="space-y-2 pt-2 border-t">
+                            <!-- Tipo de operación -->
+                            <div>
+                                <label class="text-xs text-gray-600">Operación:</label>
+                                <select x-model="element.config.operationType"
+                                    class="w-full px-2 py-1 border rounded text-xs">
+                                    <option value="cnc">CNC Fresado</option>
+                                    <option value="laser">Láser</option>
+                                    <option value="plotter">Plotter Corte</option>
+                                    <option value="pencil">Lápiz/Marcador</option>
+                                </select>
+                            </div>
+
+                            <!-- Herramienta (CNC, Plotter, Pencil) -->
+                            <div x-show="element.config?.operationType !== 'laser'">
+                                <label class="text-xs text-gray-600">Herramienta:</label>
+                                <select x-model="element.config.tool"
+                                    class="w-full px-2 py-1 border rounded text-xs">
+                                    <option value="">Sin herramienta</option>
+                                    <template x-for="tool in tools.filter(t =>
+                                        (element.config?.operationType === 'cnc' && t.category === 'cnc') ||
+                                        (element.config?.operationType === 'plotter' && t.category === 'plotter') ||
+                                        (element.config?.operationType === 'pencil' && t.category === 'pencil')
+                                    )" :key="tool.id">
+                                        <option :value="tool.name" x-text="tool.name"></option>
+                                    </template>
+                                </select>
+                            </div>
+
+                            <!-- Parámetros CNC -->
+                            <template x-if="element.config?.operationType === 'cnc'">
+                                <div class="space-y-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Profundidad (mm):</label>
+                                            <input type="number" x-model.number="element.config.depth" step="0.5"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Paso (mm):</label>
+                                            <input type="number" x-model.number="element.config.depthStep" step="0.1"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-600">Compensación:</label>
+                                        <select x-model="element.config.compensation"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                            <option value="center">Centro</option>
+                                            <option value="inside">Interior</option>
+                                            <option value="outside">Exterior</option>
+                                        </select>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Feed (mm/min):</label>
+                                            <input type="number" x-model.number="element.config.feedRate"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">RPM:</label>
+                                            <input type="number" x-model.number="element.config.spindleRPM"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Parámetros Láser -->
+                            <template x-if="element.config?.operationType === 'laser'">
+                                <div class="space-y-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Potencia (%):</label>
+                                            <input type="number" x-model.number="element.config.laserPower"
+                                                min="0" max="100"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Pasadas:</label>
+                                            <input type="number" x-model.number="element.config.passes"
+                                                min="1"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-600">Velocidad (mm/min):</label>
+                                        <input type="number" x-model.number="element.config.feedRate"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Parámetros Plotter -->
+                            <template x-if="element.config?.operationType === 'plotter'">
+                                <div class="space-y-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Presión (1-33):</label>
+                                            <input type="number" x-model.number="element.config.pressure"
+                                                min="1" max="33"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Velocidad (mm/s):</label>
+                                            <input type="number" x-model.number="element.config.speed"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-600">Pasadas:</label>
+                                        <input type="number" x-model.number="element.config.passes" min="1"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Parámetros Lápiz -->
+                            <template x-if="element.config?.operationType === 'pencil'">
+                                <div class="space-y-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Presión Z (mm):</label>
+                                            <input type="number" x-model.number="element.config.pressureZ" step="0.1"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Velocidad (mm/min):</label>
+                                            <input type="number" x-model.number="element.config.speed"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Botones de acción -->
+                            <div class="flex gap-2 pt-2">
+                                <button @click="element.config = null; updateConfigStatus()"
+                                    class="flex-1 text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">
+                                    ⟲ Resetear
+                                </button>
+                                <button @click="element.showConfig = false"
+                                    class="flex-1 text-xs bg-purple-medium hover:bg-purple-dark text-white px-2 py-1 rounded">
+                                    ✓ Listo
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Element Config Status (resumen) -->
+                    <div class="mt-2 text-xs" x-show="!element.showConfig">
+                        <span class="text-gray-600">⚙️ </span>
+                        <span x-show="!element.config" class="text-gray-500">[hereda global]</span>
+                        <span x-show="element.config" class="text-purple-medium font-medium">
+                            ✏️ <span x-text="element.config?.operationType || ''"></span>
+                        </span>
+                        <span x-show="element.config?.tool" class="ml-2 text-purple-dark">
+                            🔧 <span x-text="element.config?.tool || ''"></span>
+                        </span>
+                    </div>
+
+                    <!-- Maker.js Parameters Panel -->
+                    <div x-show="element.type === 'maker'" class="mt-2" x-data="{showMakerParams: false}">
+                        <button @click="showMakerParams = !showMakerParams"
+                            class="text-xs px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded flex items-center gap-1">
+                            <span x-text="showMakerParams ? '🔽' : '🔷'"></span>
+                            <span>Parámetros Maker.js</span>
+                        </button>
+
+                        <div x-show="showMakerParams" x-transition class="mt-2 p-3 bg-blue-ultra-pale rounded-lg space-y-2">
+                            <!-- Rectangle / RoundRectangle -->
+                            <template x-if="element.makerType === 'Rectangle' || element.makerType === 'RoundRectangle'">
+                                <div class="space-y-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Ancho:</label>
+                                            <input type="number" x-model.number="element.makerParams.width" step="1"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Alto:</label>
+                                            <input type="number" x-model.number="element.makerParams.height" step="1"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                    <div x-show="element.makerType === 'RoundRectangle'">
+                                        <label class="text-xs text-gray-600">Radio esquinas:</label>
+                                        <input type="number" x-model.number="element.makerParams.radius" step="0.5"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Square -->
+                            <template x-if="element.makerType === 'Square'">
+                                <div>
+                                    <label class="text-xs text-gray-600">Lado:</label>
+                                    <input type="number" x-model.number="element.makerParams.side" step="1"
+                                        class="w-full px-2 py-1 border rounded text-xs">
+                                </div>
+                            </template>
+
+                            <!-- Polygon -->
+                            <template x-if="element.makerType === 'Polygon'">
+                                <div class="space-y-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Lados:</label>
+                                            <input type="number" x-model.number="element.makerParams.numberOfSides" min="3"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Radio:</label>
+                                            <input type="number" x-model.number="element.makerParams.radius" step="1"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Star -->
+                            <template x-if="element.makerType === 'Star'">
+                                <div class="space-y-2">
+                                    <div>
+                                        <label class="text-xs text-gray-600">Puntas:</label>
+                                        <input type="number" x-model.number="element.makerParams.numberOfPoints" min="3"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Radio ext.:</label>
+                                            <input type="number" x-model.number="element.makerParams.outerRadius" step="1"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Radio int.:</label>
+                                            <input type="number" x-model.number="element.makerParams.innerRadius" step="1"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Ring -->
+                            <template x-if="element.makerType === 'Ring'">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="text-xs text-gray-600">Radio ext.:</label>
+                                        <input type="number" x-model.number="element.makerParams.outerRadius" step="1"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-600">Radio int.:</label>
+                                        <input type="number" x-model.number="element.makerParams.innerRadius" step="1"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Ellipse -->
+                            <template x-if="element.makerType === 'Ellipse'">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="text-xs text-gray-600">Radio X:</label>
+                                        <input type="number" x-model.number="element.makerParams.radiusX" step="1"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-600">Radio Y:</label>
+                                        <input type="number" x-model.number="element.makerParams.radiusY" step="1"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Oval -->
+                            <template x-if="element.makerType === 'Oval'">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="text-xs text-gray-600">Ancho:</label>
+                                        <input type="number" x-model.number="element.makerParams.width" step="1"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-600">Alto:</label>
+                                        <input type="number" x-model.number="element.makerParams.height" step="1"
+                                            class="w-full px-2 py-1 border rounded text-xs">
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- BoltCircle -->
+                            <template x-if="element.makerType === 'BoltCircle'">
+                                <div class="space-y-2">
+                                    <div class="grid grid-cols-3 gap-2">
+                                        <div>
+                                            <label class="text-xs text-gray-600">Radio tornillo:</label>
+                                            <input type="number" x-model.number="element.makerParams.boltRadius" step="0.5"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Radio agujero:</label>
+                                            <input type="number" x-model.number="element.makerParams.holeRadius" step="1"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs text-gray-600">Cantidad:</label>
+                                            <input type="number" x-model.number="element.makerParams.boltCount" min="3"
+                                                class="w-full px-2 py-1 border rounded text-xs">
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Regenerate Button -->
+                            <button @click="regenerateMakerModel(element.id)"
+                                class="w-full text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded mt-2">
+                                🔄 Regenerar Modelo
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Children (código actual de desglosado) -->
+                    <!-- ... mantener igual ... -->
+                </div>
+            </template>
+        </div>
+
+        <!-- Botón Generar G-code - Sticky al final -->
+        <div class="sticky bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-2 shadow-lg mt-4">
+            <button @click="generateGCode"
+                :disabled="elements.length === 0"
+                :class="elements.length > 0 ? 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600' : 'bg-gray-300 cursor-not-allowed'"
+                class="w-full flex items-center justify-center gap-2 text-white px-3 py-2 rounded-lg text-sm font-medium transition shadow-md">
+                <span class="text-base">⚙️</span>
+                <span>Generar G-code</span>
+            </button>
+        </div>
+    </div>
+</div>
+

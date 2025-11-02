@@ -1,0 +1,143 @@
+                            <div x-show="currentTab === 'viewer'"
+                                class="space-y-4">
+                                <div class="flex items-center justify-between">
+                                    <h3
+                                        class="text-sm font-semibold text-purple-dark">Controles
+                                        Visor 3D</h3>
+                                    <button @click="resetViewer3D"
+                                        class="text-xs px-3 py-1 bg-purple-ultra-pale hover:bg-purple-pale rounded transition"
+                                        title="Resetear vista">
+                                        🔄 Resetear
+                                    </button>
+                                </div>
+
+                                <!-- Quick Info -->
+                                <div class="bg-purple-ultra-pale rounded-lg p-3 text-xs">
+                                    <p class="text-gray-700">
+                                        💡 <strong>Tip:</strong> Usa el botón "🎬 Vista 3D" en el área superior
+                                        para cambiar entre el diseño SVG y la previsualización 3D.
+                                    </p>
+                                </div>
+
+                                <!-- Statistics -->
+                                <div class="bg-purple-ultra-pale rounded-lg p-3 text-xs space-y-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <span class="text-gray-600">Distancia total:</span>
+                                            <span class="font-semibold text-purple-dark ml-1"
+                                                x-text="viewer3DStats.distance"></span>
+                                        </div>
+                                        <div>
+                                            <span class="text-gray-600">Tiempo estimado:</span>
+                                            <span class="font-semibold text-purple-dark ml-1"
+                                                x-text="viewer3DStats.time"></span>
+                                        </div>
+                                        <div>
+                                            <span class="text-gray-600">Pasadas:</span>
+                                            <span class="font-semibold text-purple-dark ml-1"
+                                                x-text="viewer3DStats.passes"></span>
+                                        </div>
+                                        <div>
+                                            <span class="text-gray-600">Líneas G-code:</span>
+                                            <span class="font-semibold text-purple-dark ml-1"
+                                                x-text="gcodeLines"></span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Botón Enviar a GRBL -->
+                                <button @click="sendToGRBL"
+                                    :disabled="!connected || !gcodeGenerated"
+                                    :class="connected && gcodeGenerated ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-300 cursor-not-allowed'"
+                                    class="w-full flex items-center justify-center gap-2 text-white px-4 py-3 rounded-lg font-medium transition">
+                                    <span>▶️</span>
+                                    <span>Enviar a Máquina</span>
+                                </button>
+
+                                <!-- Layer/Pass Control -->
+                                <div x-show="viewer3DStats.passes > 1"
+                                    class="bg-white border rounded-lg p-3 space-y-2">
+                                    <div class="flex items-center justify-between text-xs">
+                                        <span class="font-semibold text-purple-dark">Vista de Pasadas</span>
+                                        <span class="text-gray-600"
+                                            x-text="'Pasada ' + viewer3DCurrentPass + '/' + viewer3DStats.passes"></span>
+                                    </div>
+                                    <input type="range"
+                                        x-model.number="viewer3DCurrentPass"
+                                        @input="updateViewer3DPass()"
+                                        min="0"
+                                        :max="viewer3DStats.passes"
+                                        class="w-full">
+                                    <div class="flex justify-between text-xs text-gray-500">
+                                        <span>Todas</span>
+                                        <span x-text="viewer3DStats.passes"></span>
+                                    </div>
+                                </div>
+
+                                <!-- Animation Controls -->
+                                <div class="bg-white border rounded-lg p-3 space-y-2">
+                                    <div class="flex items-center justify-between text-xs mb-2">
+                                        <span class="font-semibold text-purple-dark">Simulación</span>
+                                        <span class="text-gray-600"
+                                            x-text="viewer3DAnimProgress + '%'"></span>
+                                    </div>
+
+                                    <!-- Progress bar -->
+                                    <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                        <div class="bg-purple-medium h-2 transition-all duration-300"
+                                            :style="'width: ' + viewer3DAnimProgress + '%'"></div>
+                                    </div>
+
+                                    <!-- Control buttons -->
+                                    <div class="flex gap-2">
+                                        <button @click="playViewer3D"
+                                            :class="viewer3DPlaying ? 'bg-gray-300' : 'bg-green-500 hover:bg-green-600'"
+                                            :disabled="viewer3DPlaying"
+                                            class="flex-1 text-white px-3 py-2 rounded-lg text-xs transition">
+                                            ▶ Play
+                                        </button>
+                                        <button @click="pauseViewer3D"
+                                            :class="!viewer3DPlaying ? 'bg-gray-300' : 'bg-yellow-500 hover:bg-yellow-600'"
+                                            :disabled="!viewer3DPlaying"
+                                            class="flex-1 text-white px-3 py-2 rounded-lg text-xs transition">
+                                            ⏸ Pause
+                                        </button>
+                                        <button @click="stopViewer3D"
+                                            class="flex-1 bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-xs transition">
+                                            ⏹ Stop
+                                        </button>
+                                    </div>
+
+                                    <!-- Speed control -->
+                                    <div class="flex items-center gap-2 text-xs">
+                                        <span class="text-gray-600">Velocidad:</span>
+                                        <input type="range"
+                                            x-model.number="viewer3DSpeed"
+                                            @input="watchViewer3DSpeed()"
+                                            min="0.1" max="5" step="0.1"
+                                            class="flex-1">
+                                        <span class="font-semibold text-purple-dark w-8"
+                                            x-text="viewer3DSpeed + 'x'"></span>
+                                    </div>
+                                </div>
+
+                                <!-- Legend -->
+                                <div class="bg-white border rounded-lg p-3">
+                                    <div class="text-xs font-semibold text-purple-dark mb-2">Leyenda</div>
+                                    <div class="flex flex-wrap gap-3 text-xs">
+                                        <div class="flex items-center gap-1">
+                                            <div class="w-6 h-2 bg-blue-500 rounded"></div>
+                                            <span class="text-gray-600">Rápido (G0)</span>
+                                        </div>
+                                        <div class="flex items-center gap-1">
+                                            <div class="w-6 h-2 bg-red-500 rounded"></div>
+                                            <span class="text-gray-600">Corte (G1)</span>
+                                        </div>
+                                        <div class="flex items-center gap-1">
+                                            <div class="w-3 h-3 bg-yellow-400 rounded-full"></div>
+                                            <span class="text-gray-600">Herramienta</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+

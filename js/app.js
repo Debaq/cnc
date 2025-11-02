@@ -67,6 +67,7 @@ window.grblApp = function() {
             operationType: 'cnc',
             tool: '',
             material: '',
+            workType: 'outline', // outline, inside, outside, pocket
             feedRate: 800,
             plungeRate: 400,
             spindleRPM: 10000,
@@ -75,7 +76,10 @@ window.grblApp = function() {
             depth: -3,
             depthStep: 1,
             toolDiameter: 3.175,
-            compensation: 'center'
+            compensation: 'center',
+            pressure: 15, // para plotter
+            speed: 100, // para plotter/pencil
+            pressureZ: -1 // para pencil
         },
         configStatus: 'unified', // 'unified', 'multiple', 'none'
         showElementConfig: false,
@@ -153,6 +157,26 @@ toolsStatus: null,
         // Init
         async init() {
             console.log('🚀 Initializing GRBL Web Control Pro v3.5...');
+
+            // Verificar maker.js
+            console.log('🔍 Checking maker.js...');
+            if (typeof makerjs !== 'undefined') {
+                console.log('✅ Maker.js loaded:', makerjs);
+            } else if (typeof window.makerjs !== 'undefined') {
+                console.log('✅ Maker.js loaded on window:', window.makerjs);
+                window.makerjs = window.makerjs; // Asegurar acceso global
+            } else if (typeof require !== 'undefined') {
+                console.log('⚠️ Trying to require maker.js...');
+                try {
+                    window.makerjs = require('makerjs');
+                    console.log('✅ Maker.js required:', window.makerjs);
+                } catch(e) {
+                    console.error('❌ Could not require maker.js:', e);
+                }
+            } else {
+                console.error('❌ Maker.js not found!');
+                console.log('Available globals:', Object.keys(window).filter(k => k.toLowerCase().includes('maker')));
+            }
 
             // Create managers
             this.canvasManager = new CanvasManager(this);
@@ -257,11 +281,28 @@ toolsStatus: null,
             }
         },
         updateSVGWidth() {
-            if (!this.svgLoaded || !this.canvasManager.svgGroup) return;
+            const obj = this.canvasManager.fabricCanvas.getActiveObject();
+            if (!obj) return;
 
-            const obj = this.canvasManager.svgGroup;
             const targetWidthPx = this.svgWidth * this.canvasManager.pixelsPerMM;
-            const newScaleX = targetWidthPx / obj.width;
+            let newScaleX;
+
+            // Para círculos
+            if (obj.type === 'circle') {
+                newScaleX = targetWidthPx / (obj.radius * 2);
+            }
+            // Para líneas, calcular nueva escala basada en la longitud original
+            else if (obj.type === 'line') {
+                const originalLength = Math.sqrt(
+                    Math.pow(obj.x2 - obj.x1, 2) +
+                    Math.pow(obj.y2 - obj.y1, 2)
+                );
+                newScaleX = targetWidthPx / originalLength;
+            }
+            // Para el resto de objetos
+            else {
+                newScaleX = targetWidthPx / obj.width;
+            }
 
             if (this.proportionalScale) {
                 // Escala proporcional
@@ -269,7 +310,15 @@ toolsStatus: null,
                     scaleX: newScaleX,
                     scaleY: newScaleX
                 });
-                this.svgHeight = Math.round((obj.height * newScaleX) / this.canvasManager.pixelsPerMM);
+
+                // Actualizar altura según el tipo
+                if (obj.type === 'circle') {
+                    this.svgHeight = Math.round((obj.radius * 2 * newScaleX) / this.canvasManager.pixelsPerMM);
+                } else if (obj.type === 'line') {
+                    this.svgHeight = 0;
+                } else {
+                    this.svgHeight = Math.round((obj.height * newScaleX) / this.canvasManager.pixelsPerMM);
+                }
             } else {
                 // Solo ancho
                 obj.set('scaleX', newScaleX);
@@ -286,11 +335,23 @@ toolsStatus: null,
         },
 
         updateSVGHeight() {
-            if (!this.svgLoaded || !this.canvasManager.svgGroup) return;
+            const obj = this.canvasManager.fabricCanvas.getActiveObject();
+            if (!obj) return;
 
-            const obj = this.canvasManager.svgGroup;
+            // Las líneas no tienen altura, ignorar
+            if (obj.type === 'line') return;
+
             const targetHeightPx = this.svgHeight * this.canvasManager.pixelsPerMM;
-            const newScaleY = targetHeightPx / obj.height;
+            let newScaleY;
+
+            // Para círculos
+            if (obj.type === 'circle') {
+                newScaleY = targetHeightPx / (obj.radius * 2);
+            }
+            // Para el resto de objetos
+            else {
+                newScaleY = targetHeightPx / obj.height;
+            }
 
             if (this.proportionalScale) {
                 // Escala proporcional
@@ -298,7 +359,13 @@ toolsStatus: null,
                     scaleX: newScaleY,
                     scaleY: newScaleY
                 });
-                this.svgWidth = Math.round((obj.width * newScaleY) / this.canvasManager.pixelsPerMM);
+
+                // Actualizar ancho según el tipo
+                if (obj.type === 'circle') {
+                    this.svgWidth = Math.round((obj.radius * 2 * newScaleY) / this.canvasManager.pixelsPerMM);
+                } else {
+                    this.svgWidth = Math.round((obj.width * newScaleY) / this.canvasManager.pixelsPerMM);
+                }
             } else {
                 // Solo alto
                 obj.set('scaleY', newScaleY);
@@ -315,20 +382,19 @@ toolsStatus: null,
         },
 
         updateSVGPosition() {
-            if (!this.svgLoaded || !this.canvasManager.svgGroup) return;
+            const obj = this.canvasManager.fabricCanvas.getActiveObject();
+            if (!obj) return;
 
-            const obj = this.canvasManager.svgGroup;
             const origin = this.canvasManager.getOrigin();
 
             // Convert from machine coordinates (mm) to canvas pixels
-            // With originY: 'bottom', obj.top represents the bottom edge
             const canvasX = origin.x + (this.svgX * this.canvasManager.pixelsPerMM);
             const canvasY = origin.y - (this.svgY * this.canvasManager.pixelsPerMM);
 
             console.log('🔧 updateSVGPosition:');
             console.log('   Requested:', this.svgX, this.svgY, 'mm');
             console.log('   Origin:', origin.x, origin.y);
-            console.log('   Setting group to:', canvasX, canvasY);
+            console.log('   Setting object to:', canvasX, canvasY);
 
             obj.set({
                 left: canvasX,
@@ -346,18 +412,32 @@ toolsStatus: null,
         },
 
         updateSVGDimensions() {
-            // Actualizar dimensiones y posición cuando cambia el SVG
-            if (!this.canvasManager.svgGroup) return;
+            // Actualizar dimensiones y posición del objeto activo
+            const obj = this.canvasManager.fabricCanvas.getActiveObject();
+            if (!obj) return;
 
-            const obj = this.canvasManager.svgGroup;
             const origin = this.canvasManager.getOrigin();
 
-            // Update size
-            this.svgWidth = Math.round((obj.width * obj.scaleX) / this.canvasManager.pixelsPerMM);
-            this.svgHeight = Math.round((obj.height * obj.scaleY) / this.canvasManager.pixelsPerMM);
+            // Para círculos, usar el radio
+            if (obj.type === 'circle') {
+                this.svgWidth = Math.round((obj.radius * 2 * obj.scaleX) / this.canvasManager.pixelsPerMM);
+                this.svgHeight = Math.round((obj.radius * 2 * obj.scaleY) / this.canvasManager.pixelsPerMM);
+            }
+            // Para líneas, calcular la longitud
+            else if (obj.type === 'line') {
+                const dx = (obj.x2 - obj.x1) * obj.scaleX;
+                const dy = (obj.y2 - obj.y1) * obj.scaleY;
+                const length = Math.sqrt(dx * dx + dy * dy);
+                this.svgWidth = Math.round(length / this.canvasManager.pixelsPerMM);
+                this.svgHeight = 0; // Las líneas no tienen altura
+            }
+            // Para el resto de objetos (rect, path, group, etc.)
+            else {
+                this.svgWidth = Math.round((obj.width * obj.scaleX) / this.canvasManager.pixelsPerMM);
+                this.svgHeight = Math.round((obj.height * obj.scaleY) / this.canvasManager.pixelsPerMM);
+            }
 
             // Update position (convert from canvas pixels to machine mm)
-            // With originY: 'bottom', obj.top already represents bottom edge
             this.svgX = Math.round((obj.left - origin.x) / this.canvasManager.pixelsPerMM);
             this.svgY = Math.round((origin.y - obj.top) / this.canvasManager.pixelsPerMM);
         },
@@ -866,6 +946,24 @@ toolsStatus: null,
             const centerX = this.canvasManager.fabricCanvas.width / 2;
             const centerY = this.canvasManager.fabricCanvas.height / 2;
 
+            const commonProps = {
+                fill: 'transparent',
+                stroke: '#2D1B69',
+                strokeWidth: 2,
+                selectable: true,
+                evented: true,
+                hasControls: true,
+                hasBorders: true,
+                lockScalingFlip: false,
+                lockUniScaling: false,
+                cornerSize: 10,
+                cornerStyle: 'circle',
+                borderColor: '#5B4B9F',
+                cornerColor: '#5B4B9F',
+                cornerStrokeColor: '#2D1B69',
+                transparentCorners: false
+            };
+
             switch(type) {
                 case 'rect':
                     fabricObj = new fabric.Rect({
@@ -873,9 +971,7 @@ toolsStatus: null,
                         top: centerY - 25,
                         width: 50,
                         height: 50,
-                        fill: 'transparent',
-                        stroke: '#2D1B69',
-                        strokeWidth: 2
+                        ...commonProps
                     });
                     break;
                 case 'circle':
@@ -883,15 +979,12 @@ toolsStatus: null,
                         left: centerX - 25,
                         top: centerY - 25,
                         radius: 25,
-                        fill: 'transparent',
-                        stroke: '#2D1B69',
-                        strokeWidth: 2
+                        ...commonProps
                     });
                     break;
                 case 'line':
                     fabricObj = new fabric.Line([centerX - 50, centerY, centerX + 50, centerY], {
-                        stroke: '#2D1B69',
-                        strokeWidth: 2
+                        ...commonProps
                     });
                     break;
             }
@@ -907,12 +1000,15 @@ toolsStatus: null,
                     name: this.getDrawingName(type),
                     visible: true,
                     locked: false,
-                    showConfig: false, // NUEVO
+                    showConfig: false,
                     fabricObject: fabricObj,
                     config: null
                 };
                 this.elements.push(element);
                 this.addConsoleLine(`✅ Agregado: ${element.name}`);
+
+                // Actualizar los inputs con los valores del nuevo elemento
+                this.updateSVGDimensions();
             }
         },
 
@@ -921,14 +1017,198 @@ toolsStatus: null,
             const names = { rect: 'Rectángulo', circle: 'Círculo', line: 'Línea', text: 'Texto' };
             return `${names[type] || type} ${counts + 1}`;
         },
+
+        // ==============================================
+        // MAKER.JS MODELS
+        // ==============================================
+        addMakerModel(modelType) {
+            if (typeof makerjs === 'undefined') {
+                alert('Maker.js no está cargado');
+                return;
+            }
+
+            // Parámetros por defecto para cada modelo
+            const defaultParams = this.getMakerModelDefaults(modelType);
+
+            // Crear el modelo de maker.js
+            let makerModel;
+            try {
+                makerModel = this.createMakerModel(modelType, defaultParams);
+            } catch (error) {
+                console.error('Error creating maker model:', error);
+                alert('Error al crear el modelo: ' + error.message);
+                return;
+            }
+
+            // Convertir a SVG
+            const svg = makerjs.exporter.toSVG(makerModel);
+
+            // Crear elemento temporal para cargar el SVG
+            const blob = new Blob([svg], { type: 'image/svg+xml' });
+            const file = new File([blob], `${modelType}.svg`, { type: 'image/svg+xml' });
+
+            // Cargar SVG y agregar como elemento maker
+            this.loadMakerModelToCanvas(file, modelType, defaultParams);
+        },
+
+        getMakerModelDefaults(modelType) {
+            const defaults = {
+                Rectangle: { width: 50, height: 30 },
+                Square: { side: 40 },
+                RoundRectangle: { width: 50, height: 30, radius: 5 },
+                Oval: { width: 50, height: 30 },
+                Ellipse: { radiusX: 25, radiusY: 15 },
+                Ring: { outerRadius: 25, innerRadius: 15 },
+                Polygon: { numberOfSides: 6, radius: 25 },
+                Star: { numberOfPoints: 5, outerRadius: 25, innerRadius: 12 },
+                Slot: { origin: [0, 0], endPoint: [50, 0], radius: 10 },
+                Dome: { width: 50, height: 20 },
+                BoltCircle: { boltRadius: 3, holeRadius: 20, boltCount: 6 },
+                BoltRectangle: { width: 50, height: 30, holeRadius: 3 },
+                Text: { text: 'Texto', fontSize: 20, font: 'Arial' }
+            };
+
+            return defaults[modelType] || {};
+        },
+
+        createMakerModel(modelType, params) {
+            const models = makerjs.models;
+
+            switch(modelType) {
+                case 'Rectangle':
+                    return new models.Rectangle(params.width, params.height);
+                case 'Square':
+                    return new models.Square(params.side);
+                case 'RoundRectangle':
+                    return new models.RoundRectangle(params.width, params.height, params.radius);
+                case 'Oval':
+                    return new models.Oval(params.width, params.height);
+                case 'Ellipse':
+                    return new models.Ellipse(params.radiusX, params.radiusY);
+                case 'Ring':
+                    return new models.Ring(params.outerRadius, params.innerRadius);
+                case 'Polygon':
+                    return new models.Polygon(params.numberOfSides, params.radius);
+                case 'Star':
+                    return new models.Star(params.numberOfPoints, params.outerRadius, params.innerRadius);
+                case 'Slot':
+                    return new models.Slot(params.origin, params.endPoint, params.radius);
+                case 'Dome':
+                    return new models.Dome(params.width, params.height);
+                case 'BoltCircle':
+                    return new models.BoltCircle(params.boltRadius, params.holeRadius, params.boltCount);
+                case 'BoltRectangle':
+                    return new models.BoltRectangle(params.width, params.height, params.holeRadius);
+                case 'Text':
+                    // Text model requires opentype.js, handle differently
+                    console.warn('Text model requiere configuración adicional');
+                    return new models.Rectangle(50, 20); // Fallback
+                default:
+                    throw new Error('Modelo desconocido: ' + modelType);
+            }
+        },
+
+        async loadMakerModelToCanvas(file, modelType, params) {
+            try {
+                const svgGroup = await this.canvasManager.loadSVG(file);
+
+                const element = {
+                    id: 'el_' + Date.now(),
+                    type: 'maker',
+                    makerType: modelType,
+                    name: modelType,
+                    visible: true,
+                    locked: false,
+                    expanded: false,
+                    showConfig: false,
+                    fabricObject: svgGroup,
+                    config: null,
+                    makerParams: params, // Parámetros específicos del modelo maker
+                    children: []
+                };
+
+                this.elements.push(element);
+                this.updateConfigStatus();
+                this.addConsoleLine(`✅ Modelo Maker.js agregado: ${modelType}`);
+
+                // Actualizar inputs
+                this.updateSVGDimensions();
+            } catch (error) {
+                console.error('Error loading maker model:', error);
+                alert('Error al cargar el modelo: ' + error.message);
+            }
+        },
+
+        async regenerateMakerModel(elementId) {
+            const element = this.findElementById(elementId);
+            if (!element || element.type !== 'maker') return;
+
+            console.log('🔄 Regenerando modelo maker:', element.makerType);
+
+            try {
+                // Crear nuevo modelo con parámetros actualizados
+                const makerModel = this.createMakerModel(element.makerType, element.makerParams);
+                const svg = makerjs.exporter.toSVG(makerModel);
+
+                // Crear blob y file
+                const blob = new Blob([svg], { type: 'image/svg+xml' });
+                const file = new File([blob], `${element.makerType}.svg`, { type: 'image/svg+xml' });
+
+                // Guardar posición y escala actuales
+                const oldFabricObj = element.fabricObject;
+                const oldLeft = oldFabricObj.left;
+                const oldTop = oldFabricObj.top;
+                const oldScaleX = oldFabricObj.scaleX;
+                const oldScaleY = oldFabricObj.scaleY;
+                const oldAngle = oldFabricObj.angle;
+
+                // Remover objeto viejo del canvas
+                this.canvasManager.fabricCanvas.remove(oldFabricObj);
+
+                // Cargar nuevo SVG
+                const newSvgGroup = await this.canvasManager.loadSVG(file);
+
+                // Aplicar transformación anterior
+                newSvgGroup.set({
+                    left: oldLeft,
+                    top: oldTop,
+                    scaleX: oldScaleX,
+                    scaleY: oldScaleY,
+                    angle: oldAngle
+                });
+
+                // Actualizar coordenadas del objeto
+                newSvgGroup.setCoords();
+
+                // Actualizar elemento
+                element.fabricObject = newSvgGroup;
+
+                this.canvasManager.fabricCanvas.setActiveObject(newSvgGroup);
+                this.canvasManager.fabricCanvas.renderAll();
+
+                this.addConsoleLine(`✅ Modelo regenerado: ${element.makerType}`);
+
+                // Actualizar los inputs con los nuevos valores
+                this.$nextTick(() => {
+                    this.updateSVGDimensions();
+                });
+
+            } catch (error) {
+                console.error('Error regenerando modelo:', error);
+                alert('Error al regenerar el modelo: ' + error.message);
+            }
+        },
         selectElement(elementId) {
-    const element = this.findElementById(elementId);
-    if (!element || !element.fabricObject) return;
-    
-    this.canvasManager.fabricCanvas.setActiveObject(element.fabricObject);
-    this.canvasManager.fabricCanvas.renderAll();
-    this.selectedElement = element;
-},
+            const element = this.findElementById(elementId);
+            if (!element || !element.fabricObject) return;
+
+            this.canvasManager.fabricCanvas.setActiveObject(element.fabricObject);
+            this.canvasManager.fabricCanvas.renderAll();
+            this.selectedElement = element;
+
+            // Actualizar los inputs con los valores del elemento seleccionado
+            this.updateSVGDimensions();
+        },
 openToolsModal() {
     this.showToolsModal = true;
     this.toolsModalTab = 'cnc';
@@ -1152,6 +1432,36 @@ watchViewer3DSpeed() {
     if (globalGCodeViewer) {
         globalGCodeViewer.setAnimationSpeed(this.viewer3DSpeed);
     }
+},
+
+// ====================================
+// TRANSFORMATION TOOLS
+// ====================================
+
+flipHorizontal() {
+    const activeObject = this.canvasManager.fabricCanvas.getActiveObject();
+    if (!activeObject) {
+        alert('Selecciona un elemento primero');
+        return;
+    }
+
+    // Reflejar horizontalmente
+    activeObject.set('flipX', !activeObject.flipX);
+    this.canvasManager.fabricCanvas.renderAll();
+    this.addConsoleLine('↔️ Elemento reflejado horizontalmente');
+},
+
+flipVertical() {
+    const activeObject = this.canvasManager.fabricCanvas.getActiveObject();
+    if (!activeObject) {
+        alert('Selecciona un elemento primero');
+        return;
+    }
+
+    // Reflejar verticalmente
+    activeObject.set('flipY', !activeObject.flipY);
+    this.canvasManager.fabricCanvas.renderAll();
+    this.addConsoleLine('↕️ Elemento reflejado verticalmente');
 }
 
     };

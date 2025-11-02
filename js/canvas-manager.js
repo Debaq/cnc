@@ -295,7 +295,7 @@ class CanvasManager {
     }
 
     setupTools() {
-        // Listeners para actualizar los inputs cuando se mueve/escala el SVG
+        // Listeners para actualizar los inputs cuando se mueve/escala cualquier objeto
         this.fabricCanvas.on('object:modified', () => {
             if (this.app && this.app.updateSVGDimensions) {
                 this.app.updateSVGDimensions();
@@ -315,6 +315,19 @@ class CanvasManager {
         });
 
         this.fabricCanvas.on('object:rotating', () => {
+            if (this.app && this.app.updateSVGDimensions) {
+                this.app.updateSVGDimensions();
+            }
+        });
+
+        // Listeners para actualizar inputs al seleccionar un objeto
+        this.fabricCanvas.on('selection:created', (e) => {
+            if (this.app && this.app.updateSVGDimensions) {
+                this.app.updateSVGDimensions();
+            }
+        });
+
+        this.fabricCanvas.on('selection:updated', (e) => {
             if (this.app && this.app.updateSVGDimensions) {
                 this.app.updateSVGDimensions();
             }
@@ -389,41 +402,28 @@ class CanvasManager {
     }
 
     fitView() {
-        if (!this.svgGroup) {
-            // Fit work area
-            const workW = this.workArea.width * this.pixelsPerMM;
-            const workH = this.workArea.height * this.pixelsPerMM;
+        // Siempre ajustar el área de trabajo completa (no solo el SVG)
+        const workW = this.workArea.width * this.pixelsPerMM;
+        const workH = this.workArea.height * this.pixelsPerMM;
 
-            const zoom = Math.min(
-                (this.fabricCanvas.width * 0.9) / workW,
-                                  (this.fabricCanvas.height * 0.9) / workH
-            );
+        // Calcular zoom para que el área de trabajo se vea completa
+        const zoom = Math.min(
+            (this.fabricCanvas.width * 0.9) / workW,
+            (this.fabricCanvas.height * 0.9) / workH
+        );
 
-            this.fabricCanvas.setZoom(zoom);
-            this.fabricCanvas.viewportTransform[4] = (this.fabricCanvas.width - workW * zoom) / 2;
-            this.fabricCanvas.viewportTransform[5] = (this.fabricCanvas.height - workH * zoom) / 2;
-            this.fabricCanvas.renderAll();
-        } else {
-            // Fit SVG
-            const obj = this.svgGroup;
-            const objWidth = obj.width * obj.scaleX;
-            const objHeight = obj.height * obj.scaleY;
+        // Aplicar zoom
+        this.fabricCanvas.setZoom(zoom);
 
-            const zoom = Math.min(
-                (this.fabricCanvas.width * 0.8) / objWidth,
-                                  (this.fabricCanvas.height * 0.8) / objHeight
-            );
+        // Centrar el área de trabajo en el canvas
+        const originX = this.fabricCanvas.width / 2 - (workW * zoom) / 2;
+        const originY = this.fabricCanvas.height / 2 - (workH * zoom) / 2;
 
-            this.fabricCanvas.setZoom(zoom);
+        this.fabricCanvas.viewportTransform[4] = originX;
+        this.fabricCanvas.viewportTransform[5] = originY;
+        this.fabricCanvas.renderAll();
 
-            // Center the object
-            const centerX = obj.left + objWidth / 2;
-            const centerY = obj.top + objHeight / 2;
-
-            this.fabricCanvas.viewportTransform[4] = this.fabricCanvas.width / 2 - centerX * zoom;
-            this.fabricCanvas.viewportTransform[5] = this.fabricCanvas.height / 2 - centerY * zoom;
-            this.fabricCanvas.renderAll();
-        }
+        console.log('✅ Fit View: área de trabajo centrada y ajustada');
     }
 
     resetOrigin() {
@@ -549,9 +549,10 @@ class CanvasManager {
                         scaleY: scale,
                         selectable: true,
                         hasControls: true,
-                        // Set origin to bottom-left for CNC compatibility
-                        originX: 'left',
-                        originY: 'bottom'
+                        hasBorders: true,
+                        // Set origin to center for proper manipulation
+                        originX: 'center',
+                        originY: 'center'
                     });
 
                     // Store the bounding box offset for later use in G-code generation

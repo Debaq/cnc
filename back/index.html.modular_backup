@@ -47,7 +47,7 @@
         <div x-data="grblApp()" class="flex h-screen overflow-hidden">
 
             <!-- Left Sidebar - Template Component -->
-            <aside class="w-72 bg-white border-r border-gray-200 flex flex-col" x-template="'templates/components/sidebar.html'"></aside>
+            <aside x-template="'templates/components/sidebar.html'"></aside>
 
             <!-- Main Content -->
             <main class="flex-1 flex flex-col overflow-hidden">
