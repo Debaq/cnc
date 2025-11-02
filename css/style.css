@@ -97,6 +97,11 @@ canvas.tool-rotate:active {
     justify-content: center;
 }
 
+/* Alpine.js x-show cloak helper */
+[x-cloak] {
+    display: none !important;
+}
+
 .modal-content {
     background: white;
     border-radius: 12px;

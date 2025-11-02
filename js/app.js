@@ -155,30 +155,33 @@ window.grblApp = function() {
         showGRBLHelpModal: false,
         currentGRBLHelp: {},
 
-
+        // Modal Tools
         showToolsModal: false,
-toolsModalTab: 'cnc', // 'cnc', 'plotter', 'pencil'
-editingTool: null,
-toolForm: {
-    name: '',
-    type: 'endmill',
-    diameter: 3.175,
-    angle: 0,
-    feedRate: 800,
-    plungeRate: 400,
-    rpm: 12000,
-    pressure: 15,
-    speed: 100,
-    thickness: 0.5,
-    color: '#000000',
-    notes: ''
-},
-authPassword: '',
-toolsStatus: null,
+        toolsModalTab: 'cnc', // 'cnc', 'plotter', 'pencil'
+        editingTool: null,
+        toolForm: {
+            name: '',
+            type: 'endmill',
+            diameter: 3.175,
+            angle: 0,
+            feedRate: 800,
+            plungeRate: 400,
+            rpm: 12000,
+            pressure: 15,
+            speed: 100,
+            thickness: 0.5,
+            color: '#000000',
+            notes: ''
+        },
+        authPassword: '',
+        toolsStatus: null,
+
+        // Modal system
+        activeModal: null,
 
         // Init
         async init() {
-            console.log('🚀 Initializing GRBL Web Control Pro v3.5...');
+            console.log('🚀 Initializing GRBL Web Control Pro v4.0...');
 
             // Verificar maker.js
             console.log('🔍 Checking maker.js...');
@@ -821,10 +824,18 @@ toolsStatus: null,
                 this.openWorkAreaModal();
             } else if (modalId === 'grblSettings') {
                 this.openGRBLModal();
+            } else if (modalId === 'tools') {
+                this.openToolsModal();
+            } else if (modalId === 'globalConfig') {
+                this.activeModal = 'globalConfig';
             } else {
                 console.log('Opening modal:', modalId);
                 alert('Modal ' + modalId + ' - En desarrollo');
             }
+        },
+
+        closeModal() {
+            this.activeModal = null;
         },
         // ============================================
         // ELEMENTS SYSTEM
@@ -1497,260 +1508,264 @@ toolsStatus: null,
         // FIN FUNCIONES NUEVAS
         // ============================================
 
-openToolsModal() {
-    this.showToolsModal = true;
-    this.toolsModalTab = 'cnc';
-    this.toolsStatus = null;
-},
+        // ============================================
+        // TOOLS MODAL METHODS
+        // ============================================
 
-closeToolsModal() {
-    this.showToolsModal = false;
-    this.editingTool = null;
-    this.resetToolForm();
-},
+        openToolsModal() {
+            this.showToolsModal = true;
+            this.toolsModalTab = 'cnc';
+            this.toolsStatus = null;
+        },
 
-resetToolForm() {
-    this.toolForm = {
-        name: '',
-        type: 'endmill',
-        diameter: 3.175,
-        angle: 0,
-        feedRate: 800,
-        plungeRate: 400,
-        rpm: 12000,
-        pressure: 15,
-        speed: 100,
-        thickness: 0.5,
-        color: '#000000',
-        notes: ''
-    };
-},
-
-editTool(tool) {
-    this.editingTool = tool;
-    this.toolForm = { ...tool };
-},
-
-async saveTool() {
-    if (!this.authPassword) {
-        this.toolsStatus = { type: 'error', message: '❌ Se requiere contraseña' };
-        return;
-    }
-
-    const toolData = {
-        ...this.toolForm,
-        id: this.editingTool?.id || undefined,
-        category: this.toolsModalTab
-    };
-
-    try {
-        const response = await fetch('backend/api.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'saveTool',
-                password: this.authPassword,
-                data: toolData
-            })
-        });
-
-        const result = await response.json();
-        
-        if (result.success) {
-            await this.libraryManager.loadTools();
-            this.tools = this.libraryManager.tools;
-            this.toolsStatus = { type: 'success', message: '✅ Herramienta guardada' };
-            this.resetToolForm();
+        closeToolsModal() {
+            this.showToolsModal = false;
             this.editingTool = null;
-        } else {
-            this.toolsStatus = { type: 'error', message: '❌ ' + result.message };
+            this.resetToolForm();
+        },
+
+        resetToolForm() {
+            this.toolForm = {
+                name: '',
+                type: 'endmill',
+                diameter: 3.175,
+                angle: 0,
+                feedRate: 800,
+                plungeRate: 400,
+                rpm: 12000,
+                pressure: 15,
+                speed: 100,
+                thickness: 0.5,
+                color: '#000000',
+                notes: ''
+            };
+        },
+
+        editTool(tool) {
+            this.editingTool = tool;
+            this.toolForm = { ...tool };
+        },
+
+        async saveTool() {
+            if (!this.authPassword) {
+                this.toolsStatus = { type: 'error', message: '❌ Se requiere contraseña' };
+                return;
+            }
+
+            const toolData = {
+                ...this.toolForm,
+                id: this.editingTool?.id || undefined,
+                category: this.toolsModalTab
+            };
+
+            try {
+                const response = await fetch('backend/api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'saveTool',
+                        password: this.authPassword,
+                        data: toolData
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    await this.libraryManager.loadTools();
+                    this.tools = this.libraryManager.tools;
+                    this.toolsStatus = { type: 'success', message: '✅ Herramienta guardada' };
+                    this.resetToolForm();
+                    this.editingTool = null;
+                } else {
+                    this.toolsStatus = { type: 'error', message: '❌ ' + result.message };
+                }
+            } catch (error) {
+                this.toolsStatus = { type: 'error', message: '❌ Error de conexión' };
+            }
+        },
+
+        async deleteTool(toolId) {
+            if (!this.authPassword) {
+                this.toolsStatus = { type: 'error', message: '❌ Se requiere contraseña' };
+                return;
+            }
+
+            if (!confirm('¿Eliminar esta herramienta?')) return;
+
+            try {
+                const response = await fetch('backend/api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'deleteTool',
+                        password: this.authPassword,
+                        id: toolId
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    await this.libraryManager.loadTools();
+                    this.tools = this.libraryManager.tools;
+                    this.toolsStatus = { type: 'success', message: '✅ Herramienta eliminada' };
+                } else {
+                    this.toolsStatus = { type: 'error', message: '❌ ' + result.message };
+                }
+            } catch (error) {
+                this.toolsStatus = { type: 'error', message: '❌ Error de conexión' };
+            }
+        },
+
+        getToolsByCategory(category) {
+            return this.tools.filter(t => t.category === category);
+        },
+
+        // ====================================
+        // 3D VIEWER METHODS
+        // ====================================
+
+        switchTo3DView() {
+            if (!this.gcodeGenerated) {
+                console.warn('⚠️ No G-code generated yet');
+                return;
+            }
+
+            console.log('🎬 Switching to 3D view');
+            this.viewMode = '3d';
+            this.currentTab = 'viewer';
+
+            // Update viewer with current G-code
+            if (globalGCodeViewer) {
+                // Small delay to ensure canvas is visible
+                setTimeout(() => {
+                    // Force resize to ensure proper canvas dimensions
+                    globalGCodeViewer.handleResize();
+                    this.updateViewer3D();
+                }, 100);
+            }
+        },
+
+        updateViewer3D() {
+            if (!globalGCodeViewer || !this.gcode) {
+                console.warn('⚠️ Cannot update 3D viewer: not initialized or no G-code');
+                return;
+            }
+
+            console.log('🎬 Updating 3D viewer...');
+
+            // Parse and visualize G-code
+            globalGCodeViewer.parseGCode(this.gcode);
+            globalGCodeViewer.visualize(this.viewer3DCurrentPass);
+
+            // Update statistics
+            const stats = globalGCodeViewer.getStats();
+            this.viewer3DStats = {
+                distance: stats.distance,
+                time: stats.time,
+                passes: stats.passes
+            };
+
+            // Reset animation
+            this.viewer3DAnimProgress = 0;
+            this.viewer3DPlaying = false;
+
+            console.log('✅ 3D viewer updated');
+        },
+
+        updateViewer3DPass() {
+            if (!globalGCodeViewer) return;
+
+            console.log('🔄 Updating pass view:', this.viewer3DCurrentPass);
+            globalGCodeViewer.visualize(this.viewer3DCurrentPass);
+            this.stopViewer3D();
+        },
+
+        resetViewer3D() {
+            if (!globalGCodeViewer) return;
+
+            console.log('🔄 Resetting 3D viewer');
+            globalGCodeViewer.resetCamera();
+            this.viewer3DCurrentPass = 0;
+            this.stopViewer3D();
+        },
+
+        playViewer3D() {
+            if (!globalGCodeViewer || !this.gcodeGenerated) return;
+
+            console.log('▶ Playing 3D animation');
+            this.viewer3DPlaying = true;
+            globalGCodeViewer.setAnimationSpeed(this.viewer3DSpeed);
+            globalGCodeViewer.startAnimation();
+
+            // Update progress periodically
+            this.updateAnimationProgress();
+        },
+
+        pauseViewer3D() {
+            if (!globalGCodeViewer) return;
+
+            console.log('⏸ Pausing 3D animation');
+            this.viewer3DPlaying = false;
+            globalGCodeViewer.pauseAnimation();
+        },
+
+        stopViewer3D() {
+            if (!globalGCodeViewer) return;
+
+            console.log('⏹ Stopping 3D animation');
+            this.viewer3DPlaying = false;
+            this.viewer3DAnimProgress = 0;
+            globalGCodeViewer.stopAnimation();
+        },
+
+        updateAnimationProgress() {
+            if (!this.viewer3DPlaying || !globalGCodeViewer) return;
+
+            this.viewer3DAnimProgress = Math.round(globalGCodeViewer.getAnimationProgress());
+
+            if (this.viewer3DPlaying) {
+                requestAnimationFrame(() => this.updateAnimationProgress());
+            }
+        },
+
+        // Called when speed slider changes
+        watchViewer3DSpeed() {
+            if (globalGCodeViewer) {
+                globalGCodeViewer.setAnimationSpeed(this.viewer3DSpeed);
+            }
+        },
+
+        // ====================================
+        // TRANSFORMATION TOOLS
+        // ====================================
+
+        flipHorizontal() {
+            const activeObject = this.canvasManager.fabricCanvas.getActiveObject();
+            if (!activeObject) {
+                alert('Selecciona un elemento primero');
+                return;
+            }
+
+            // Reflejar horizontalmente
+            activeObject.set('flipX', !activeObject.flipX);
+            this.canvasManager.fabricCanvas.renderAll();
+            this.addConsoleLine('↔️ Elemento reflejado horizontalmente');
+        },
+
+        flipVertical() {
+            const activeObject = this.canvasManager.fabricCanvas.getActiveObject();
+            if (!activeObject) {
+                alert('Selecciona un elemento primero');
+                return;
+            }
+
+            // Reflejar verticalmente
+            activeObject.set('flipY', !activeObject.flipY);
+            this.canvasManager.fabricCanvas.renderAll();
+            this.addConsoleLine('↕️ Elemento reflejado verticalmente');
         }
-    } catch (error) {
-        this.toolsStatus = { type: 'error', message: '❌ Error de conexión' };
-    }
-},
-
-async deleteTool(toolId) {
-    if (!this.authPassword) {
-        this.toolsStatus = { type: 'error', message: '❌ Se requiere contraseña' };
-        return;
-    }
-
-    if (!confirm('¿Eliminar esta herramienta?')) return;
-
-    try {
-        const response = await fetch('backend/api.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'deleteTool',
-                password: this.authPassword,
-                id: toolId
-            })
-        });
-
-        const result = await response.json();
-        
-        if (result.success) {
-            await this.libraryManager.loadTools();
-            this.tools = this.libraryManager.tools;
-            this.toolsStatus = { type: 'success', message: '✅ Herramienta eliminada' };
-        } else {
-            this.toolsStatus = { type: 'error', message: '❌ ' + result.message };
-        }
-    } catch (error) {
-        this.toolsStatus = { type: 'error', message: '❌ Error de conexión' };
-    }
-},
-
-getToolsByCategory(category) {
-    return this.tools.filter(t => t.category === category);
-},
-
-// ====================================
-// 3D VIEWER METHODS
-// ====================================
-
-switchTo3DView() {
-    if (!this.gcodeGenerated) {
-        console.warn('⚠️ No G-code generated yet');
-        return;
-    }
-
-    console.log('🎬 Switching to 3D view');
-    this.viewMode = '3d';
-    this.currentTab = 'viewer';
-
-    // Update viewer with current G-code
-    if (globalGCodeViewer) {
-        // Small delay to ensure canvas is visible
-        setTimeout(() => {
-            // Force resize to ensure proper canvas dimensions
-            globalGCodeViewer.handleResize();
-            this.updateViewer3D();
-        }, 100);
-    }
-},
-
-updateViewer3D() {
-    if (!globalGCodeViewer || !this.gcode) {
-        console.warn('⚠️ Cannot update 3D viewer: not initialized or no G-code');
-        return;
-    }
-
-    console.log('🎬 Updating 3D viewer...');
-
-    // Parse and visualize G-code
-    globalGCodeViewer.parseGCode(this.gcode);
-    globalGCodeViewer.visualize(this.viewer3DCurrentPass);
-
-    // Update statistics
-    const stats = globalGCodeViewer.getStats();
-    this.viewer3DStats = {
-        distance: stats.distance,
-        time: stats.time,
-        passes: stats.passes
-    };
-
-    // Reset animation
-    this.viewer3DAnimProgress = 0;
-    this.viewer3DPlaying = false;
-
-    console.log('✅ 3D viewer updated');
-},
-
-updateViewer3DPass() {
-    if (!globalGCodeViewer) return;
-
-    console.log('🔄 Updating pass view:', this.viewer3DCurrentPass);
-    globalGCodeViewer.visualize(this.viewer3DCurrentPass);
-    this.stopViewer3D();
-},
-
-resetViewer3D() {
-    if (!globalGCodeViewer) return;
-
-    console.log('🔄 Resetting 3D viewer');
-    globalGCodeViewer.resetCamera();
-    this.viewer3DCurrentPass = 0;
-    this.stopViewer3D();
-},
-
-playViewer3D() {
-    if (!globalGCodeViewer || !this.gcodeGenerated) return;
-
-    console.log('▶ Playing 3D animation');
-    this.viewer3DPlaying = true;
-    globalGCodeViewer.setAnimationSpeed(this.viewer3DSpeed);
-    globalGCodeViewer.startAnimation();
-
-    // Update progress periodically
-    this.updateAnimationProgress();
-},
-
-pauseViewer3D() {
-    if (!globalGCodeViewer) return;
-
-    console.log('⏸ Pausing 3D animation');
-    this.viewer3DPlaying = false;
-    globalGCodeViewer.pauseAnimation();
-},
-
-stopViewer3D() {
-    if (!globalGCodeViewer) return;
-
-    console.log('⏹ Stopping 3D animation');
-    this.viewer3DPlaying = false;
-    this.viewer3DAnimProgress = 0;
-    globalGCodeViewer.stopAnimation();
-},
-
-updateAnimationProgress() {
-    if (!this.viewer3DPlaying || !globalGCodeViewer) return;
-
-    this.viewer3DAnimProgress = Math.round(globalGCodeViewer.getAnimationProgress());
-
-    if (this.viewer3DPlaying) {
-        requestAnimationFrame(() => this.updateAnimationProgress());
-    }
-},
-
-// Called when speed slider changes
-watchViewer3DSpeed() {
-    if (globalGCodeViewer) {
-        globalGCodeViewer.setAnimationSpeed(this.viewer3DSpeed);
-    }
-},
-
-// ====================================
-// TRANSFORMATION TOOLS
-// ====================================
-
-flipHorizontal() {
-    const activeObject = this.canvasManager.fabricCanvas.getActiveObject();
-    if (!activeObject) {
-        alert('Selecciona un elemento primero');
-        return;
-    }
-
-    // Reflejar horizontalmente
-    activeObject.set('flipX', !activeObject.flipX);
-    this.canvasManager.fabricCanvas.renderAll();
-    this.addConsoleLine('↔️ Elemento reflejado horizontalmente');
-},
-
-flipVertical() {
-    const activeObject = this.canvasManager.fabricCanvas.getActiveObject();
-    if (!activeObject) {
-        alert('Selecciona un elemento primero');
-        return;
-    }
-
-    // Reflejar verticalmente
-    activeObject.set('flipY', !activeObject.flipY);
-    this.canvasManager.fabricCanvas.renderAll();
-    this.addConsoleLine('↕️ Elemento reflejado verticalmente');
-}
 
     };
 };
