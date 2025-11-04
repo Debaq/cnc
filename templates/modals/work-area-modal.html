@@ -5,73 +5,118 @@
                 x-transition>
                 <div class="modal-content" @click.stop>
                     <div
-                        class="bg-purple-dark text-white px-6 py-4 rounded-t-lg">
-                        <h2 class="text-xl font-bold">⚙️ Configurar Área de
-                            Trabajo</h2>
+                        class="modal-header-compact bg-purple-dark text-white rounded-t-lg">
+                        <h2>⚙️ Configurar Área de Trabajo</h2>
                     </div>
 
-                    <div class="p-6 space-y-6">
+                    <div class="modal-content-spacing">
                         <!-- Presets -->
-                        <div>
-                            <h3
-                                class="text-sm font-semibold text-purple-dark mb-3">Tamaños
-                                Predefinidos</h3>
-                            <div class="grid grid-cols-3 gap-2">
+                        <div class="modal-section-compact">
+                            <h3 class="modal-section-title-compact text-purple-dark">Tamaños Predefinidos</h3>
+                            <div class="modal-grid-compact cols-3">
                                 <button @click="setPresetWorkArea(300, 300)"
-                                    class="px-3 py-2 bg-purple-ultra-pale hover:bg-purple-pale rounded-lg text-sm transition">
+                                    class="button-compact bg-purple-ultra-pale hover:bg-purple-pale rounded-lg transition">
                                     300x300mm
                                 </button>
                                 <button @click="setPresetWorkArea(400, 400)"
-                                    class="px-3 py-2 bg-purple-ultra-pale hover:bg-purple-pale rounded-lg text-sm transition">
+                                    class="button-compact bg-purple-ultra-pale hover:bg-purple-pale rounded-lg transition">
                                     400x400mm
                                 </button>
                                 <button @click="setPresetWorkArea(600, 400)"
-                                    class="px-3 py-2 bg-purple-ultra-pale hover:bg-purple-pale rounded-lg text-sm transition">
+                                    class="button-compact bg-purple-ultra-pale hover:bg-purple-pale rounded-lg transition">
                                     600x400mm
                                 </button>
                                 <button @click="setPresetWorkArea(800, 600)"
-                                    class="px-3 py-2 bg-purple-ultra-pale hover:bg-purple-pale rounded-lg text-sm transition">
+                                    class="button-compact bg-purple-ultra-pale hover:bg-purple-pale rounded-lg transition">
                                     800x600mm
                                 </button>
                                 <button @click="setPresetWorkArea(1000, 600)"
-                                    class="px-3 py-2 bg-purple-ultra-pale hover:bg-purple-pale rounded-lg text-sm transition">
+                                    class="button-compact bg-purple-ultra-pale hover:bg-purple-pale rounded-lg transition">
                                     1000x600mm
                                 </button>
                                 <button @click="setPresetWorkArea(1200, 800)"
-                                    class="px-3 py-2 bg-purple-ultra-pale hover:bg-purple-pale rounded-lg text-sm transition">
+                                    class="button-compact bg-purple-ultra-pale hover:bg-purple-pale rounded-lg transition">
                                     1200x800mm
                                 </button>
                             </div>
                         </div>
 
                         <!-- Custom Size -->
-                        <div>
-                            <h3
-                                class="text-sm font-semibold text-purple-dark mb-3">Tamaño
-                                Personalizado</h3>
-                            <div class="grid grid-cols-2 gap-4">
+                        <div class="modal-section-compact">
+                            <h3 class="modal-section-title-compact text-purple-dark">Tamaño Personalizado</h3>
+                            <div class="form-grid-compact cols-2">
                                 <div>
-                                    <label
-                                        class="text-xs text-gray-600 block mb-1">Ancho
-                                        (mm)</label>
+                                    <label class="form-label-compact text-gray-600">Ancho (mm)</label>
                                     <input type="number"
                                         x-model.number="tempWorkArea.width"
                                         min="100"
                                         max="2000"
                                         step="10"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                                        class="form-input-compact">
                                 </div>
                                 <div>
-                                    <label
-                                        class="text-xs text-gray-600 block mb-1">Alto
-                                        (mm)</label>
+                                    <label class="form-label-compact text-gray-600">Alto (mm)</label>
                                     <input type="number"
                                         x-model.number="tempWorkArea.height"
                                         min="100"
                                         max="2000"
                                         step="10"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                                        class="form-input-compact">
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- Origin Point -->
+                        <div class="modal-section-compact">
+                            <h3 class="modal-section-title-compact text-purple-dark">📍 Punto de Origen (G-code)</h3>
+                            <p class="text-xs text-gray-600 mb-2">Selecciona desde qué esquina inicia la herramienta</p>
+                            <div class="grid grid-cols-3 gap-3">
+                                <button @click="tempWorkArea.origin = 'top-left'"
+                                    :class="tempWorkArea.origin === 'top-left' ? 'bg-purple-medium text-white' : 'bg-gray-100 hover:bg-gray-200'"
+                                    class="button-compact rounded transition flex flex-col items-center justify-center py-4">
+                                    <span class="text-2xl">↖️</span>
+                                    <span class="text-xs mt-1 font-medium">Superior Izq.</span>
+                                </button>
+                                <button disabled
+                                    class="button-compact rounded transition flex flex-col items-center justify-center py-4 opacity-0 cursor-not-allowed">
+                                    <span class="text-2xl"></span>
+                                </button>
+                                <button @click="tempWorkArea.origin = 'top-right'"
+                                    :class="tempWorkArea.origin === 'top-right' ? 'bg-purple-medium text-white' : 'bg-gray-100 hover:bg-gray-200'"
+                                    class="button-compact rounded transition flex flex-col items-center justify-center py-4">
+                                    <span class="text-2xl">↗️</span>
+                                    <span class="text-xs mt-1 font-medium">Superior Der.</span>
+                                </button>
+                                <button disabled
+                                    class="button-compact rounded transition flex flex-col items-center justify-center py-4 opacity-0 cursor-not-allowed">
+                                    <span class="text-2xl"></span>
+                                </button>
+                                <button @click="tempWorkArea.origin = 'center'"
+                                    :class="tempWorkArea.origin === 'center' ? 'bg-purple-medium text-white' : 'bg-gray-100 hover:bg-gray-200'"
+                                    class="button-compact rounded transition flex flex-col items-center justify-center py-4">
+                                    <span class="text-2xl">⏺️</span>
+                                    <span class="text-xs mt-1 font-medium">Centro</span>
+                                </button>
+                                <button disabled
+                                    class="button-compact rounded transition flex flex-col items-center justify-center py-4 opacity-0 cursor-not-allowed">
+                                    <span class="text-2xl"></span>
+                                </button>
+                                <button @click="tempWorkArea.origin = 'bottom-left'"
+                                    :class="tempWorkArea.origin === 'bottom-left' ? 'bg-purple-medium text-white' : 'bg-gray-100 hover:bg-gray-200'"
+                                    class="button-compact rounded transition flex flex-col items-center justify-center py-4">
+                                    <span class="text-2xl">↙️</span>
+                                    <span class="text-xs mt-1 font-medium">Inferior Izq.</span>
+                                </button>
+                                <button disabled
+                                    class="button-compact rounded transition flex flex-col items-center justify-center py-4 opacity-0 cursor-not-allowed">
+                                    <span class="text-2xl"></span>
+                                </button>
+                                <button @click="tempWorkArea.origin = 'bottom-right'"
+                                    :class="tempWorkArea.origin === 'bottom-right' ? 'bg-purple-medium text-white' : 'bg-gray-100 hover:bg-gray-200'"
+                                    class="button-compact rounded transition flex flex-col items-center justify-center py-4">
+                                    <span class="text-2xl">↘️</span>
+                                    <span class="text-xs mt-1 font-medium">Inferior Der.</span>
+                                </button>
                             </div>
                         </div>
 

@@ -13,26 +13,62 @@ class SerialControl {
         this.responsePromise = null;
     }
 
-    async connect() {
+    async connect(baudRate = 115200) {
         if (!('serial' in navigator)) {
-            alert('Web Serial API no soportada. Usa Chrome/Edge/Opera');
+            alert('Web Serial API no soportada. Usa Chrome/Edge/Opera o un navegador compatible.');
             return false;
         }
 
         try {
+            // Solicitar puerto al usuario (abre diálogo del navegador)
             this.port = await navigator.serial.requestPort();
-            await this.port.open({ baudRate: 115200 });
+
+            // Abrir puerto con el baudRate especificado
+            await this.port.open({ baudRate: baudRate });
 
             this.reader = this.port.readable.getReader();
             this.writer = this.port.writable.getWriter();
             this.connected = true;
 
+            // Listener para detectar desconexión física del puerto
+            navigator.serial.addEventListener('disconnect', (e) => {
+                if (e.target === this.port) {
+                    console.warn('⚠️ Puerto desconectado físicamente');
+                    this.handleDisconnect();
+                }
+            });
+
+            // Iniciar lectura en background
             this.startReading();
 
+            console.log(`✅ Connected at ${baudRate} baud`);
             return true;
         } catch (error) {
-            console.error('Connection error:', error);
+            console.error('❌ Connection error:', error);
+
+            // Mensajes de error más específicos
+            if (error.name === 'NotFoundError') {
+                alert('No se seleccionó ningún puerto');
+            } else if (error.name === 'InvalidStateError') {
+                alert('El puerto ya está en uso por otra aplicación');
+            } else {
+                alert('Error al conectar: ' + error.message);
+            }
+
             return false;
+        }
+    }
+
+    handleDisconnect() {
+        this.connected = false;
+        this.reader = null;
+        this.writer = null;
+        this.port = null;
+
+        // Actualizar estado en la app
+        if (this.app) {
+            this.app.connected = false;
+            this.app.addConsoleLine('⚠️ Puerto serial desconectado');
         }
     }
 
@@ -59,13 +95,22 @@ class SerialControl {
         try {
             while (true) {
                 const { value, done } = await this.reader.read();
-                if (done) break;
+                if (done) {
+                    console.log('📖 Reader stream closed');
+                    break;
+                }
 
                 const text = new TextDecoder().decode(value);
                 this.handleResponse(text);
             }
         } catch (error) {
-            console.error('Read error:', error);
+            // Si el error es porque se canceló el reader, es normal (disconnect)
+            if (error.name === 'NetworkError' || error.name === 'NotFoundError') {
+                console.warn('⚠️ Connection lost during read');
+                this.handleDisconnect();
+            } else {
+                console.error('❌ Read error:', error);
+            }
         }
     }
 

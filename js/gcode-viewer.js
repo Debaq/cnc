@@ -11,6 +11,14 @@ class GCodeViewer {
         this.renderer = null;
         this.controls = null;
 
+        // ViewCube components
+        this.viewCubeScene = null;
+        this.viewCubeCamera = null;
+        this.viewCube = null;
+
+        // Work area configuration (should match canvas-manager)
+        this.workArea = { width: 400, height: 400, origin: 'bottom-left' };
+
         // G-code data
         this.gcode = '';
         this.commands = [];
@@ -58,15 +66,15 @@ class GCodeViewer {
 
         // Scene
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x1a1a1a);
+        this.scene.background = new THREE.Color(0xf0f0f0); // Light gray background for modern look
 
         // Camera
         const width = this.canvas.clientWidth;
         const height = this.canvas.clientHeight;
         this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 5000);
-        // Position camera above and to the side (isometric view)
+        // Position camera directly above (top view) for easier debugging
         // Looking at center of 400x400 work area (200, 0, 200)
-        this.camera.position.set(500, 400, 500);
+        this.camera.position.set(200, 600, 200);
         this.camera.lookAt(200, 0, 200); // Look at center of work area
 
         // Renderer
@@ -86,21 +94,25 @@ class GCodeViewer {
         this.controls.maxDistance = 2000;
         console.log('✅ OrbitControls initialized');
 
-        // Lights
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        // Lights - adjusted for light background
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
         this.scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
         directionalLight.position.set(200, 300, 200);
         this.scene.add(directionalLight);
 
-        const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+        const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
         directionalLight2.position.set(-200, -100, -200);
         this.scene.add(directionalLight2);
 
-        // Grid and axes
+        // Grid, axes and origin marker
         this.createGrid();
         this.createAxes();
+        this.createOriginMarker();
+
+        // ViewCube for navigation
+        this.createViewCube();
 
         // Handle window resize
         window.addEventListener('resize', () => this.handleResize());
@@ -115,25 +127,32 @@ class GCodeViewer {
     // GRID AND AXES
     // ====================================
     createGrid() {
-        // Work area grid with origin at corner (0,0,0)
-        const size = 400; // 400mm work area
-        const divisions = 20; // 20mm grid spacing
+        // Work area grid dimensions from configuration
+        const sizeX = this.workArea.width;
+        const sizeY = this.workArea.height;
+        const maxSize = Math.max(sizeX, sizeY);
+        const divisions = Math.floor(maxSize / 20); // 20mm grid spacing
 
-        // Grid in XZ plane (CNC XY plane) - centered at size/2, size/2
-        const gridHelper = new THREE.GridHelper(size, divisions, 0x444444, 0x333333);
-        // Move grid so origin (0,0) is at corner, not center
-        gridHelper.position.set(size / 2, 0, size / 2);
+        // For rectangular areas, use a plane with grid instead of GridHelper
+        // Grid in XZ plane (CNC XY plane)
+        const gridHelper = new THREE.GridHelper(maxSize, divisions, 0x999999, 0xcccccc);
+
+        // Position grid based on origin configuration
+        // For now, always position at center (we'll adjust the marker position instead)
+        gridHelper.position.set(sizeX / 2, 0, sizeY / 2);
         this.scene.add(gridHelper);
 
         // Work area border at Y=0 (CNC Z=0)
         const borderGeometry = new THREE.EdgesGeometry(
-            new THREE.PlaneGeometry(size, size)
+            new THREE.PlaneGeometry(sizeX, sizeY)
         );
         const borderMaterial = new THREE.LineBasicMaterial({ color: 0x6666ff, linewidth: 2 });
         const border = new THREE.LineSegments(borderGeometry, borderMaterial);
         border.rotation.x = -Math.PI / 2; // Rotate to XZ plane
-        border.position.set(size / 2, 0, size / 2); // Position at center of work area
+        border.position.set(sizeX / 2, 0, sizeY / 2); // Position at center of work area
         this.scene.add(border);
+
+        console.log(`✅ Grid created: ${sizeX}x${sizeY}mm`);
     }
 
     createAxes() {
@@ -141,10 +160,10 @@ class GCodeViewer {
         const axesHelper = new THREE.AxesHelper(100);
         this.scene.add(axesHelper);
 
-        // Axis labels - mapped to CNC coordinates
-        // Three.js X → CNC X (right)
-        // Three.js Y → CNC Z (up)
-        // Three.js Z → CNC Y (depth/back)
+        // Axis labels - showing CNC axis names with correct colors
+        // CNC Mapping: X=red (right), Y=green (depth/back), Z=blue (up)
+        // Three.js Mapping: X=right, Y=up, Z=forward
+        // So: CNC X→ThreeX, CNC Y→ThreeZ, CNC Z→ThreeY
         const createLabel = (text, position, color) => {
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
@@ -164,10 +183,288 @@ class GCodeViewer {
             return sprite;
         };
 
-        // Label positions in Three.js space, but showing CNC axis names
-        this.scene.add(createLabel('X', new THREE.Vector3(110, 0, 0), '#ff0000')); // X axis (red)
-        this.scene.add(createLabel('Z', new THREE.Vector3(0, 110, 0), '#00ff00')); // Z axis (green, up)
-        this.scene.add(createLabel('Y', new THREE.Vector3(0, 0, 110), '#0000ff')); // Y axis (blue, depth)
+        // CNC axis labels with standard colors
+        this.scene.add(createLabel('X', new THREE.Vector3(110, 0, 0), '#ff0000')); // CNC X (red, right)
+        this.scene.add(createLabel('Z', new THREE.Vector3(0, 110, 0), '#0000ff')); // CNC Z (blue, up) - maps to Three.js Y
+        this.scene.add(createLabel('Y', new THREE.Vector3(0, 0, 110), '#00ff00')); // CNC Y (green, back) - maps to Three.js Z
+    }
+
+    createOriginMarker() {
+        // Remove existing origin marker if any
+        if (this.originMarker) {
+            this.scene.remove(this.originMarker);
+            if (this.originMarker.geometry) this.originMarker.geometry.dispose();
+            if (this.originMarker.material) this.originMarker.material.dispose();
+        }
+
+        // Calculate origin position based on workArea.origin
+        const sizeX = this.workArea.width;
+        const sizeY = this.workArea.height;
+        let originX, originZ; // In Three.js coordinates (X, Z plane is CNC X, Y plane)
+
+        const origin = this.workArea.origin || 'bottom-left';
+
+        // Map origin position
+        // Bottom-left is (0, 0), top-right is (sizeX, sizeY)
+        switch (origin) {
+            case 'bottom-left':
+                originX = 0;
+                originZ = 0;
+                break;
+            case 'bottom-center':
+                originX = sizeX / 2;
+                originZ = 0;
+                break;
+            case 'bottom-right':
+                originX = sizeX;
+                originZ = 0;
+                break;
+            case 'center-left':
+                originX = 0;
+                originZ = sizeY / 2;
+                break;
+            case 'center':
+                originX = sizeX / 2;
+                originZ = sizeY / 2;
+                break;
+            case 'center-right':
+                originX = sizeX;
+                originZ = sizeY / 2;
+                break;
+            case 'top-left':
+                originX = 0;
+                originZ = sizeY;
+                break;
+            case 'top-center':
+                originX = sizeX / 2;
+                originZ = sizeY;
+                break;
+            case 'top-right':
+                originX = sizeX;
+                originZ = sizeY;
+                break;
+            default:
+                originX = 0;
+                originZ = 0;
+        }
+
+        // Create origin marker group
+        const markerGroup = new THREE.Group();
+
+        // Create small axes at origin position (30mm length)
+        const axisLength = 30;
+
+        // X axis (red)
+        const xAxisGeom = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(axisLength, 0, 0)
+        ]);
+        const xAxisMat = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 3 });
+        const xAxis = new THREE.Line(xAxisGeom, xAxisMat);
+        markerGroup.add(xAxis);
+
+        // Z axis (blue, up)
+        const zAxisGeom = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, axisLength, 0)
+        ]);
+        const zAxisMat = new THREE.LineBasicMaterial({ color: 0x0000ff, linewidth: 3 });
+        const zAxis = new THREE.Line(zAxisGeom, zAxisMat);
+        markerGroup.add(zAxis);
+
+        // Y axis (green, back)
+        const yAxisGeom = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, 0, axisLength)
+        ]);
+        const yAxisMat = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 3 });
+        const yAxis = new THREE.Line(yAxisGeom, yAxisMat);
+        markerGroup.add(yAxis);
+
+        // Add origin dot
+        const dotGeom = new THREE.SphereGeometry(2, 16, 16);
+        const dotMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        const dot = new THREE.Mesh(dotGeom, dotMat);
+        markerGroup.add(dot);
+
+        // Position the marker group at the calculated origin
+        markerGroup.position.set(originX, 0, originZ);
+
+        this.scene.add(markerGroup);
+        this.originMarker = markerGroup;
+
+        console.log(`✅ Origin marker created at (${originX}, 0, ${originZ}) for origin: ${origin}`);
+    }
+
+    // ====================================
+    // VIEW CUBE
+    // ====================================
+    createViewCube() {
+        console.log('🎲 Creating ViewCube...');
+
+        // Create separate scene for ViewCube
+        this.viewCubeScene = new THREE.Scene();
+
+        // Create orthographic camera for ViewCube
+        this.viewCubeCamera = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 10);
+        this.viewCubeCamera.position.set(0, 0, 5);
+        this.viewCubeCamera.lookAt(0, 0, 0);
+
+        // Create cube geometry
+        const geometry = new THREE.BoxGeometry(2, 2, 2);
+
+        // Create materials for each face with labels
+        const materials = [
+            this.createCubeFaceMaterial('RIGHT', 0xff6b6b),  // +X (red)
+            this.createCubeFaceMaterial('LEFT', 0xff9999),   // -X (light red)
+            this.createCubeFaceMaterial('TOP', 0x6b8cff),    // +Y (blue)
+            this.createCubeFaceMaterial('BOTTOM', 0x99b3ff), // -Y (light blue)
+            this.createCubeFaceMaterial('FRONT', 0x6bff6b),  // +Z (green)
+            this.createCubeFaceMaterial('BACK', 0x99ff99)    // -Z (light green)
+        ];
+
+        this.viewCube = new THREE.Mesh(geometry, materials);
+        this.viewCubeScene.add(this.viewCube);
+
+        // Add ambient light to ViewCube scene
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+        this.viewCubeScene.add(ambientLight);
+
+        // Add click interaction
+        this.setupViewCubeInteraction();
+
+        console.log('✅ ViewCube created');
+    }
+
+    createCubeFaceMaterial(label, color) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const context = canvas.getContext('2d');
+
+        // Background
+        context.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
+        context.fillRect(0, 0, 256, 256);
+
+        // Border
+        context.strokeStyle = '#ffffff';
+        context.lineWidth = 8;
+        context.strokeRect(4, 4, 248, 248);
+
+        // Text
+        context.fillStyle = '#ffffff';
+        context.font = 'Bold 36px Arial';
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillText(label, 128, 128);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        return new THREE.MeshBasicMaterial({ map: texture });
+    }
+
+    setupViewCubeInteraction() {
+        // Store face directions for camera positioning
+        this.viewCubeFaces = {
+            'RIGHT': { position: [600, 200, 200], name: 'Right' },
+            'LEFT': { position: [-200, 200, 200], name: 'Left' },
+            'TOP': { position: [200, 600, 200], name: 'Top' },
+            'BOTTOM': { position: [200, -200, 200], name: 'Bottom' },
+            'FRONT': { position: [200, 200, 600], name: 'Front' },
+            'BACK': { position: [200, 200, -200], name: 'Back' }
+        };
+
+        // Add click event listener to canvas
+        this.canvas.addEventListener('click', (event) => this.handleViewCubeClick(event));
+    }
+
+    handleViewCubeClick(event) {
+        // Check if click is in ViewCube area (top-right corner, 100x100px)
+        const rect = this.canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+
+        const cubeSize = 100;
+        const cubeX = this.canvas.clientWidth - cubeSize - 10;
+        const cubeY = 10;
+
+        if (x >= cubeX && x <= cubeX + cubeSize && y >= cubeY && y <= cubeY + cubeSize) {
+            // Click is in ViewCube area - determine which face
+            const localX = (x - cubeX) / cubeSize;
+            const localY = (y - cubeY) / cubeSize;
+
+            let face = null;
+            if (localX < 0.33) {
+                face = 'LEFT';
+            } else if (localX > 0.67) {
+                face = 'RIGHT';
+            } else if (localY < 0.33) {
+                face = 'TOP';
+            } else if (localY > 0.67) {
+                face = 'BOTTOM';
+            } else {
+                face = 'FRONT';
+            }
+
+            if (face && this.viewCubeFaces[face]) {
+                this.setView(face);
+            }
+        }
+    }
+
+    setView(faceName) {
+        const face = this.viewCubeFaces[faceName];
+        if (!face) return;
+
+        console.log(`📐 Setting view to: ${face.name}`);
+
+        // Animate camera to new position
+        const targetPos = new THREE.Vector3(...face.position);
+        const targetLookAt = new THREE.Vector3(200, 0, 200); // Center of work area
+
+        // Set camera position and look at
+        this.camera.position.copy(targetPos);
+        this.camera.lookAt(targetLookAt);
+
+        if (this.controls) {
+            this.controls.target.copy(targetLookAt);
+            this.controls.update();
+        }
+    }
+
+    updateViewCube() {
+        if (!this.viewCube || !this.camera) return;
+
+        // Make ViewCube rotation match camera orientation
+        const cameraDirection = new THREE.Vector3();
+        this.camera.getWorldDirection(cameraDirection);
+
+        // Update ViewCube rotation to match camera
+        this.viewCube.rotation.copy(this.camera.rotation);
+    }
+
+    renderViewCube() {
+        if (!this.viewCubeScene || !this.viewCubeCamera) return;
+
+        // Update ViewCube rotation
+        this.updateViewCube();
+
+        // Save current state
+        const width = this.canvas.clientWidth;
+        const height = this.canvas.clientHeight;
+
+        // Render main scene
+        this.renderer.render(this.scene, this.camera);
+
+        // Set viewport for ViewCube (top-right corner, 100x100px)
+        const cubeSize = 100;
+        this.renderer.setViewport(width - cubeSize - 10, 10, cubeSize, cubeSize);
+        this.renderer.setScissor(width - cubeSize - 10, 10, cubeSize, cubeSize);
+        this.renderer.setScissorTest(true);
+        this.renderer.render(this.viewCubeScene, this.viewCubeCamera);
+
+        // Reset viewport
+        this.renderer.setViewport(0, 0, width, height);
+        this.renderer.setScissorTest(false);
     }
 
     // ====================================
@@ -366,14 +663,19 @@ class GCodeViewer {
             this.scene.remove(this.toolMarker);
         }
 
-        // Create tool marker (sphere)
-        const geometry = new THREE.SphereGeometry(3, 16, 16);
+        // Create tool marker (thin cone pointing down)
+        const geometry = new THREE.ConeGeometry(1.5, 8, 16);
         const material = new THREE.MeshStandardMaterial({
             color: 0xffdd44,
             emissive: 0xffaa00,
-            emissiveIntensity: 0.5
+            emissiveIntensity: 0.5,
+            metalness: 0.3,
+            roughness: 0.4
         });
         this.toolMarker = new THREE.Mesh(geometry, material);
+
+        // Rotate cone to point down (negative Y in Three.js = down in CNC)
+        this.toolMarker.rotation.x = Math.PI; // Flip 180 degrees
 
         // Position at start
         if (commands.length > 0) {
@@ -509,8 +811,8 @@ class GCodeViewer {
     }
 
     resetCamera() {
-        // Reset to default isometric view
-        this.camera.position.set(500, 400, 500);
+        // Reset to default top view
+        this.camera.position.set(200, 600, 200);
         this.camera.lookAt(200, 0, 200); // Look at center of 400x400 work area
         if (this.controls) {
             this.controls.target.set(200, 0, 200);
@@ -584,7 +886,8 @@ class GCodeViewer {
             this.controls.update();
         }
 
-        this.renderer.render(this.scene, this.camera);
+        // Render main scene and ViewCube
+        this.renderViewCube();
     }
 
     handleResize() {
@@ -597,6 +900,40 @@ class GCodeViewer {
         this.camera.updateProjectionMatrix();
 
         this.renderer.setSize(width, height);
+    }
+
+    // ====================================
+    // WORK AREA CONFIGURATION
+    // ====================================
+    setWorkArea(width, height, origin = 'bottom-left') {
+        console.log(`📐 Setting work area: ${width}x${height}mm, origin: ${origin}`);
+
+        this.workArea.width = width;
+        this.workArea.height = height;
+        this.workArea.origin = origin;
+
+        // If scene is already initialized, recreate grid and axes
+        if (this.scene) {
+            // Remove old grid, axes and origin marker
+            const objectsToRemove = [];
+            this.scene.traverse((object) => {
+                if (object.type === 'GridHelper' ||
+                    object.type === 'LineSegments' ||
+                    object.type === 'AxesHelper' ||
+                    object.type === 'Sprite' ||
+                    object.type === 'Group' && object === this.originMarker) {
+                    objectsToRemove.push(object);
+                }
+            });
+            objectsToRemove.forEach(obj => this.scene.remove(obj));
+
+            // Recreate grid, axes and origin marker with new dimensions
+            this.createGrid();
+            this.createAxes();
+            this.createOriginMarker();
+
+            console.log('✅ Work area updated in 3D viewer');
+        }
     }
 
     // ====================================

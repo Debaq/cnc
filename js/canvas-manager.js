@@ -1,6 +1,33 @@
 // ============================================
-// CANVAS MANAGER (Fabric.js) - MEJORADO CON PATH EXTRACTION
+// CANVAS MANAGER (Fabric.js) - SISTEMA DE COORDENADAS
 // ============================================
+/**
+ * SISTEMA DE COORDENADAS CONFIGURABLES
+ *
+ * Este manager permite configurar el punto de origen (0,0) en diferentes posiciones
+ * del área de trabajo. Los objetos se mantienen en su posición visual en el canvas,
+ * pero las coordenadas G-code se calculan relativas al origen configurado.
+ *
+ * DIRECCIONES DE EJES SEGÚN EL ORIGEN:
+ *
+ * top-left:         X+ → derecha,   Y+ → abajo
+ * top-right:        X+ → izquierda, Y+ → abajo
+ * bottom-left:      X+ → derecha,   Y+ → arriba (DEFAULT CNC)
+ * bottom-right:     X+ → izquierda, Y+ → arriba
+ * center:           X+ → derecha,   Y+ → arriba (permite valores negativos)
+ *
+ * FLUJO DE TRABAJO:
+ * 1. Usuario configura origen en modal de área de trabajo
+ * 2. El marcador visual (punto amarillo + ejes XY) se mueve a la posición configurada
+ * 3. Los objetos NO se mueven visualmente en el canvas
+ * 4. Al generar G-code, transformPoint() calcula coordenadas relativas al origen
+ * 5. La máquina interpreta las coordenadas correctamente según su configuración
+ *
+ * NOTA IMPORTANTE:
+ * El G-code generado contiene coordenadas relativas al origen configurado.
+ * La máquina debe estar configurada (G54, G55, etc.) para interpretar
+ * el origen en la misma posición que se configuró aquí.
+ */
 class CanvasManager {
     constructor(app) {
         this.app = app;
@@ -10,7 +37,7 @@ class CanvasManager {
         this.layers = []; // Sistema de capas
 
         // Work area config (mm)
-        this.workArea = { width: 400, height: 400 };
+        this.workArea = { width: 400, height: 400, origin: 'bottom-left' };
         this.pixelsPerMM = 2;
 
         // Grid - MEJORADO: 20mm = 2cm
@@ -19,6 +46,215 @@ class CanvasManager {
 
         // Origin marker
         this.originMarker = null;
+
+        // Object origin marker (shown when object is selected)
+        this.objectOriginMarker = null;
+    }
+
+    /**
+     * Mapea el origen del área de trabajo a originX/originY de Fabric.js
+     * Esto asegura que los objetos usen el mismo punto de referencia que el área
+     * @returns {Object} {originX: 'left'|'center'|'right', originY: 'top'|'center'|'bottom'}
+     */
+    getObjectOriginFromWorkArea() {
+        const origin = this.workArea.origin || 'bottom-left';
+
+        const mapping = {
+            'bottom-left': { originX: 'left', originY: 'bottom' },
+            'bottom-right': { originX: 'right', originY: 'bottom' },
+            'top-left': { originX: 'left', originY: 'top' },
+            'top-right': { originX: 'right', originY: 'top' },
+            'center': { originX: 'center', originY: 'center' }
+        };
+
+        return mapping[origin] || { originX: 'left', originY: 'bottom' };
+    }
+
+    /**
+     * Calcula las coordenadas de máquina (en mm) del punto de origen de un objeto
+     * Estas son las coordenadas que se muestran al usuario y se usan en el G-code
+     * @param {fabric.Object} obj - El objeto de Fabric.js
+     * @returns {Object} {x, y} coordenadas en mm relativas al origen del área
+     */
+    getObjectMachineCoordinates(obj) {
+        if (!obj) return { x: 0, y: 0 };
+
+        // Obtener el punto de origen del objeto en coordenadas canvas
+        const objOriginCanvas = this.getObjectOriginPoint(obj);
+        if (!objOriginCanvas) return { x: 0, y: 0 };
+
+        // Obtener la posición del origen del área en coordenadas canvas
+        const workW = this.workArea.width * this.pixelsPerMM;
+        const workH = this.workArea.height * this.pixelsPerMM;
+        const origin = this.workArea.origin || 'bottom-left';
+        const areaOriginCanvas = this.getOriginPosition(origin, workW, workH);
+
+        // Calcular la distancia en píxeles desde el origen del área
+        const deltaX = objOriginCanvas.x - areaOriginCanvas.x;
+        const deltaY = objOriginCanvas.y - areaOriginCanvas.y;
+
+        // Convertir a coordenadas de máquina según la dirección de los ejes
+        let machineX, machineY;
+
+        switch(origin) {
+            case 'top-left':
+                // X+ derecha, Y+ abajo
+                machineX = deltaX / this.pixelsPerMM;
+                machineY = deltaY / this.pixelsPerMM;
+                break;
+            case 'top-right':
+                // X+ izquierda (invertir), Y+ abajo
+                machineX = -deltaX / this.pixelsPerMM;
+                machineY = deltaY / this.pixelsPerMM;
+                break;
+            case 'bottom-left':
+                // X+ derecha, Y+ arriba (invertir Y) - DEFAULT CNC
+                machineX = deltaX / this.pixelsPerMM;
+                machineY = -deltaY / this.pixelsPerMM;
+                break;
+            case 'bottom-right':
+                // X+ izquierda (invertir X), Y+ arriba (invertir Y)
+                machineX = -deltaX / this.pixelsPerMM;
+                machineY = -deltaY / this.pixelsPerMM;
+                break;
+            case 'center':
+                // X+ derecha, Y+ arriba (invertir Y) - Permite negativos
+                machineX = deltaX / this.pixelsPerMM;
+                machineY = -deltaY / this.pixelsPerMM;
+                break;
+            default:
+                // Fallback a bottom-left
+                machineX = deltaX / this.pixelsPerMM;
+                machineY = -deltaY / this.pixelsPerMM;
+        }
+
+        return {
+            x: Math.round(machineX * 100) / 100, // 2 decimales
+            y: Math.round(machineY * 100) / 100
+        };
+    }
+
+    /**
+     * Calcula la posición visual del punto de origen de un objeto en coordenadas canvas
+     * @param {fabric.Object} obj - El objeto de Fabric.js
+     * @returns {Object} {x, y} posición en canvas del punto de origen del objeto
+     */
+    getObjectOriginPoint(obj) {
+        if (!obj) return null;
+
+        // Obtener el bounding box del objeto
+        const boundingRect = obj.getBoundingRect(true); // true = absolute coords
+        const left = boundingRect.left;
+        const top = boundingRect.top;
+        const width = boundingRect.width;
+        const height = boundingRect.height;
+
+        let x, y;
+
+        // Calcular la posición según originX
+        switch(obj.originX) {
+            case 'left':
+                x = left;
+                break;
+            case 'center':
+                x = left + width / 2;
+                break;
+            case 'right':
+                x = left + width;
+                break;
+            default:
+                x = left;
+        }
+
+        // Calcular la posición según originY
+        switch(obj.originY) {
+            case 'top':
+                y = top;
+                break;
+            case 'center':
+                y = top + height / 2;
+                break;
+            case 'bottom':
+                y = top + height;
+                break;
+            default:
+                y = top;
+        }
+
+        return { x, y };
+    }
+
+    /**
+     * Muestra un marcador visual en el punto de origen del objeto seleccionado
+     * @param {fabric.Object} obj - El objeto seleccionado
+     */
+    showObjectOriginMarker(obj) {
+        // Eliminar marcador anterior si existe
+        this.hideObjectOriginMarker();
+
+        if (!obj) return;
+
+        const originPoint = this.getObjectOriginPoint(obj);
+        if (!originPoint) return;
+
+        // Crear marcador: círculo cyan con borde oscuro
+        const marker = new fabric.Circle({
+            left: originPoint.x - 5,
+            top: originPoint.y - 5,
+            radius: 5,
+            fill: '#00FFFF',
+            stroke: '#0088AA',
+            strokeWidth: 2,
+            selectable: false,
+            evented: false,
+            hoverCursor: 'default',
+            hasControls: false,
+            hasBorders: false,
+            lockMovementX: true,
+            lockMovementY: true,
+            name: 'objectOriginMarker'
+        });
+
+        this.fabricCanvas.add(marker);
+        this.objectOriginMarker = marker;
+
+        // El marcador se agrega al final, estará encima de otros objetos
+        this.fabricCanvas.renderAll();
+
+        console.log('📍 Showing object origin marker at', originPoint.x.toFixed(1), originPoint.y.toFixed(1));
+    }
+
+    /**
+     * Oculta el marcador de origen del objeto
+     */
+    hideObjectOriginMarker() {
+        if (this.objectOriginMarker) {
+            this.fabricCanvas.remove(this.objectOriginMarker);
+            this.objectOriginMarker = null;
+        }
+    }
+
+    /**
+     * Actualiza la posición del marcador cuando el objeto se mueve/transforma
+     * @param {boolean} skipRender - Si es true, no renderiza (para optimizar en loops)
+     */
+    updateObjectOriginMarker(skipRender = false) {
+        const activeObj = this.fabricCanvas.getActiveObject();
+        if (activeObj && this.objectOriginMarker) {
+            const originPoint = this.getObjectOriginPoint(activeObj);
+            if (originPoint) {
+                this.objectOriginMarker.set({
+                    left: originPoint.x - 5,
+                    top: originPoint.y - 5
+                });
+                this.objectOriginMarker.setCoords();
+
+                // El marcador se mantiene visible sin necesidad de reordenar
+                if (!skipRender) {
+                    this.fabricCanvas.requestRenderAll();
+                }
+            }
+        }
     }
 
     init(canvasElement) {
@@ -128,14 +364,14 @@ class CanvasManager {
     }
 
     clearGrid() {
-        // Remove old grid and work area
+        // Remove old grid and work area (but keep objectOriginMarker)
         const objects = this.fabricCanvas.getObjects();
         objects.forEach(obj => {
             if (obj.name === 'gridLine' || obj.name === 'workArea' ||
                 obj.name === 'xAxis' || obj.name === 'yAxis' ||
                 obj.name === 'origin') {
                 this.fabricCanvas.remove(obj);
-                }
+            }
         });
     }
 
@@ -212,29 +448,61 @@ class CanvasManager {
     }
 
     getOrigin() {
-        // Calculate origin position (bottom-left corner of work area)
+        // DEPRECATED: Use getOriginPosition() instead
+        // This method is kept for compatibility only
         const workW = this.workArea.width * this.pixelsPerMM;
         const workH = this.workArea.height * this.pixelsPerMM;
-        const centerX = this.fabricCanvas.width / 2;
-        const centerY = this.fabricCanvas.height / 2;
-
-        const originX = centerX - workW / 2;
-        const originY = centerY + workH / 2;
-
-        return { x: originX, y: originY };
+        return this.getOriginPosition(this.workArea.origin || 'bottom-left', workW, workH);
     }
 
     setupOrigin() {
-        const originPos = this.getOrigin();
+        const workW = this.workArea.width * this.pixelsPerMM;
+        const workH = this.workArea.height * this.pixelsPerMM;
+        const origin = this.workArea.origin || 'bottom-left';
+
+        // Obtener la posición del origen según la configuración
+        const originPos = this.getOriginPosition(origin, workW, workH);
         const originX = originPos.x;
         const originY = originPos.y;
 
-        console.log('📍 Setting up origin at:', originX.toFixed(1), originY.toFixed(1));
+        console.log('📍 Setting up origin at:', originX.toFixed(1), originY.toFixed(1), '- Type:', origin);
 
         const axisLength = 40;
 
-        // X axis (red) - MÁS FINO
-        const xAxis = new fabric.Line([originX, originY, originX + axisLength, originY], {
+        // Determinar la dirección de los ejes según el origen
+        let xAxisEndX = originX + axisLength; // Por defecto X+ hacia la derecha
+        let yAxisEndY = originY - axisLength; // Por defecto Y+ hacia arriba
+
+        switch(origin) {
+            case 'top-left':
+                // X+ hacia derecha, Y+ hacia abajo
+                xAxisEndX = originX + axisLength;
+                yAxisEndY = originY + axisLength;
+                break;
+            case 'top-right':
+                // X+ hacia izquierda, Y+ hacia abajo
+                xAxisEndX = originX - axisLength;
+                yAxisEndY = originY + axisLength;
+                break;
+            case 'bottom-left':
+                // X+ hacia derecha, Y+ hacia arriba (default CNC)
+                xAxisEndX = originX + axisLength;
+                yAxisEndY = originY - axisLength;
+                break;
+            case 'bottom-right':
+                // X+ hacia izquierda, Y+ hacia arriba
+                xAxisEndX = originX - axisLength;
+                yAxisEndY = originY - axisLength;
+                break;
+            case 'center':
+                // X+ hacia derecha, Y+ hacia arriba (permite negativos en ambos)
+                xAxisEndX = originX + axisLength;
+                yAxisEndY = originY - axisLength;
+                break;
+        }
+
+        // X axis (red)
+        const xAxis = new fabric.Line([originX, originY, xAxisEndX, originY], {
             stroke: '#FF0000',
             strokeWidth: 3,
             selectable: false,
@@ -242,8 +510,8 @@ class CanvasManager {
             name: 'xAxis'
         });
 
-        // Y axis (green) - MÁS FINO
-        const yAxis = new fabric.Line([originX, originY, originX, originY - axisLength], {
+        // Y axis (green)
+        const yAxis = new fabric.Line([originX, originY, originX, yAxisEndY], {
             stroke: '#00FF00',
             strokeWidth: 3,
             selectable: false,
@@ -251,7 +519,7 @@ class CanvasManager {
             name: 'yAxis'
         });
 
-        // Origin dot - MÁS PEQUEÑO
+        // Origin dot
         const originDot = new fabric.Circle({
             left: originX - 6,
             top: originY - 6,
@@ -264,32 +532,34 @@ class CanvasManager {
             name: 'origin'
         });
 
-        // Arrow on X (triangle) - MÁS PEQUEÑO
+        // Arrow on X (triangle) - La dirección depende de si X es positivo o negativo
+        const xArrowAngle = xAxisEndX > originX ? 90 : -90; // 90 = derecha, -90 = izquierda
         const arrowX = new fabric.Triangle({
-            left: originX + axisLength - 4,
+            left: xAxisEndX - 4,
             top: originY - 4,
             width: 8,
             height: 8,
             fill: '#FF0000',
-            angle: 90,
+            angle: xArrowAngle,
             selectable: false,
             evented: false
         });
 
-        // Arrow on Y (triangle) - MÁS PEQUEÑO
+        // Arrow on Y (triangle) - La dirección depende de si Y es positivo hacia arriba o abajo
+        const yArrowAngle = yAxisEndY < originY ? 0 : 180; // 0 = arriba, 180 = abajo
         const arrowY = new fabric.Triangle({
             left: originX - 4,
-            top: originY - axisLength - 4,
+            top: yAxisEndY - 4,
             width: 8,
             height: 8,
             fill: '#00FF00',
-            angle: 0,
+            angle: yArrowAngle,
             selectable: false,
             evented: false
         });
 
         this.fabricCanvas.add(xAxis, yAxis, originDot, arrowX, arrowY);
-        console.log('   ✅ Origin markers added (X axis RED →, Y axis GREEN ↑)');
+        console.log(`   ✅ Origin markers added at ${origin} (X: ${xAxisEndX > originX ? 'right +' : 'left +'}, Y: ${yAxisEndY < originY ? 'up +' : 'down +'})`);
 
         this.originMarker = { xAxis, yAxis, originDot, arrowX, arrowY };
     }
@@ -322,6 +592,12 @@ class CanvasManager {
 
         // Listeners para actualizar inputs al seleccionar un objeto
         this.fabricCanvas.on('selection:created', (e) => {
+            // Mostrar marcador de origen del objeto
+            const selectedObj = this.fabricCanvas.getActiveObject();
+            if (selectedObj) {
+                this.showObjectOriginMarker(selectedObj);
+            }
+
             if (this.app) {
                 // Actualizar dimensiones
                 if (this.app.updateSVGDimensions) {
@@ -358,6 +634,12 @@ class CanvasManager {
         });
 
         this.fabricCanvas.on('selection:updated', (e) => {
+            // Actualizar marcador de origen del objeto
+            const selectedObj = this.fabricCanvas.getActiveObject();
+            if (selectedObj) {
+                this.showObjectOriginMarker(selectedObj);
+            }
+
             if (this.app) {
                 // Actualizar dimensiones
                 if (this.app.updateSVGDimensions) {
@@ -393,8 +675,11 @@ class CanvasManager {
             }
         });
 
-        // Ocultar panel cuando se deselecciona
+        // Ocultar panel y marcador cuando se deselecciona
         this.fabricCanvas.on('selection:cleared', (e) => {
+            // Ocultar marcador de origen del objeto
+            this.hideObjectOriginMarker();
+
             if (this.app) {
                 this.app.selectedElementId = null;
                 this.app.showPropertiesPanel = false;
@@ -404,26 +689,36 @@ class CanvasManager {
             }
         });
 
-        // Actualizar panel cuando el objeto se modifica
+        // Actualizar marcador en CADA frame antes de renderizar
+        // Esto asegura que el marcador siempre esté sincronizado con el objeto
+        this.fabricCanvas.on('before:render', () => {
+            this.updateObjectOriginMarker(true); // skipRender = true para evitar loop
+        });
+
+        // Actualizar panel y marcador cuando el objeto se modifica
         this.fabricCanvas.on('object:modified', (e) => {
+            this.updateObjectOriginMarker();
             if (this.app && this.app.updateSVGDimensions) {
                 this.app.updateSVGDimensions();
             }
         });
 
         this.fabricCanvas.on('object:moving', (e) => {
+            // No renderizar aquí porque before:render lo hará
             if (this.app && this.app.updateSVGDimensions) {
                 this.app.updateSVGDimensions();
             }
         });
 
         this.fabricCanvas.on('object:scaling', (e) => {
+            // No renderizar aquí porque before:render lo hará
             if (this.app && this.app.updateSVGDimensions) {
                 this.app.updateSVGDimensions();
             }
         });
 
         this.fabricCanvas.on('object:rotating', (e) => {
+            // No renderizar aquí porque before:render lo hará
             if (this.app && this.app.updateSVGDimensions) {
                 this.app.updateSVGDimensions();
             }
@@ -545,10 +840,121 @@ class CanvasManager {
         this.fabricCanvas.renderAll();
     }
 
+    /**
+     * Calcula la posición del origen en coordenadas canvas según el tipo de origen
+     * @param {string} origin - El tipo de origen ('bottom-left', 'center', etc.)
+     * @param {number} workW - Ancho del área de trabajo en píxeles
+     * @param {number} workH - Alto del área de trabajo en píxeles
+     * @returns {Object} {x, y} posición del origen en coordenadas canvas
+     */
+    getOriginPosition(origin, workW, workH) {
+        const centerX = this.fabricCanvas.width / 2;
+        const centerY = this.fabricCanvas.height / 2;
+
+        switch (origin) {
+            case 'bottom-left':
+                return { x: centerX - workW / 2, y: centerY + workH / 2 };
+            case 'bottom-center':
+                return { x: centerX, y: centerY + workH / 2 };
+            case 'bottom-right':
+                return { x: centerX + workW / 2, y: centerY + workH / 2 };
+            case 'center-left':
+                return { x: centerX - workW / 2, y: centerY };
+            case 'center':
+                return { x: centerX, y: centerY };
+            case 'center-right':
+                return { x: centerX + workW / 2, y: centerY };
+            case 'top-left':
+                return { x: centerX - workW / 2, y: centerY - workH / 2 };
+            case 'top-center':
+                return { x: centerX, y: centerY - workH / 2 };
+            case 'top-right':
+                return { x: centerX + workW / 2, y: centerY - workH / 2 };
+            default:
+                return { x: centerX - workW / 2, y: centerY + workH / 2 };
+        }
+    }
+
+    /**
+     * Verifica si hay elementos en el canvas (aparte de los elementos del sistema)
+     * @returns {boolean} true si hay elementos de usuario en el canvas
+     */
+    hasUserElements() {
+        const objects = this.fabricCanvas.getObjects();
+        return objects.some(obj => {
+            return obj.name !== 'gridLine' &&
+                   obj.name !== 'workArea' &&
+                   obj.name !== 'xAxis' &&
+                   obj.name !== 'yAxis' &&
+                   obj.name !== 'origin' &&
+                   obj.name !== 'objectOriginMarker';
+        });
+    }
+
+    /**
+     * Actualiza el punto de origen (originX/originY) de todos los objetos según el nuevo origen del área
+     * Mantiene la posición visual de los objetos
+     * @param {string} newOrigin - El nuevo origen del área (ej: 'center', 'top-left', etc.)
+     */
+    updateAllObjectOrigins(newOrigin) {
+        console.log('🔄 Updating all object origins to match area origin:', newOrigin);
+
+        const objects = this.fabricCanvas.getObjects();
+        const newObjectOrigin = this.getObjectOriginFromWorkArea();
+        let updatedCount = 0;
+
+        objects.forEach(obj => {
+            // Ignorar elementos del sistema
+            if (obj.name === 'gridLine' || obj.name === 'workArea' ||
+                obj.name === 'xAxis' || obj.name === 'yAxis' ||
+                obj.name === 'origin' || obj.name === 'objectOriginMarker') {
+                return;
+            }
+
+            // Guardar posición visual actual (usando getCenterPoint que es independiente del origen)
+            const center = obj.getCenterPoint();
+
+            // Cambiar el punto de origen del objeto
+            obj.set({
+                originX: newObjectOrigin.originX,
+                originY: newObjectOrigin.originY
+            });
+
+            // Recalcular left/top para que el objeto permanezca en la misma posición visual
+            // usando el centro como referencia
+            obj.setPositionByOrigin(center, 'center', 'center');
+            obj.setCoords();
+
+            updatedCount++;
+        });
+
+        console.log(`   ✅ Updated origin for ${updatedCount} objects`);
+        console.log(`   📍 New object origin: ${newObjectOrigin.originX}, ${newObjectOrigin.originY}`);
+
+        // Renderizar primero para que los cambios se apliquen
+        this.fabricCanvas.renderAll();
+
+        // Si hay un objeto seleccionado, forzar actualización de su marcador
+        const activeObj = this.fabricCanvas.getActiveObject();
+        if (activeObj && this.objectOriginMarker) {
+            // Ocultar y volver a mostrar para que se posicione correctamente
+            this.hideObjectOriginMarker();
+            // Usar setTimeout para asegurar que se renderiza después del cambio
+            setTimeout(() => {
+                this.showObjectOriginMarker(activeObj);
+            }, 10);
+        }
+    }
+
     // NUEVA FUNCIÓN: Cambiar área de trabajo
-    setWorkArea(width, height) {
+    setWorkArea(width, height, origin = 'bottom-left') {
+        const oldOrigin = this.workArea.origin;
+        const oldWidth = this.workArea.width;
+        const oldHeight = this.workArea.height;
+
         this.workArea.width = width;
         this.workArea.height = height;
+        this.workArea.origin = origin;
 
         // Recalcular pixelsPerMM si es necesario
         const workAreaPx = Math.max(width, height) * this.pixelsPerMM;
@@ -558,16 +964,29 @@ class CanvasManager {
             this.pixelsPerMM = (minDimension * 0.8) / Math.max(width, height);
         }
 
-        // Redibujar todo
+        // Redibujar el grid y el marcador de origen del área
         this.clearGrid();
         this.setupGrid();
         this.setupOrigin();
-        this.fabricCanvas.renderAll();
+
+        // Si cambió el origen, actualizar el punto de referencia de TODOS los objetos
+        if (oldOrigin !== origin) {
+            console.log('🔄 Origin changed:', oldOrigin, '→', origin);
+            this.updateAllObjectOrigins(origin);
+        } else {
+            this.fabricCanvas.renderAll();
+        }
 
         // Actualizar UI
         this.app.workAreaSize = `${width} x ${height}`;
 
-        console.log('✅ Work area changed to:', width, 'x', height, 'mm');
+        console.log('✅ Work area changed to:', width, 'x', height, 'mm, origin:', origin);
+
+        // Retornar si cambió el origen para que app.js lo detecte
+        return {
+            originChanged: oldOrigin !== origin,
+            sizeChanged: oldWidth !== width || oldHeight !== height
+        };
     }
 
     async loadSVG(file, elementId = null) {
@@ -619,43 +1038,41 @@ class CanvasManager {
                         this.svgGroup = new fabric.Group(objects, options);
                     }
 
-                    // Position at origin (bottom-left)
+                    // Calculate work area dimensions
                     const workW = this.workArea.width * this.pixelsPerMM;
                     const workH = this.workArea.height * this.pixelsPerMM;
-                    const centerX = this.fabricCanvas.width / 2;
-                    const centerY = this.fabricCanvas.height / 2;
-                    const originX = centerX - workW / 2;
-                    const originY = centerY + workH / 2;
 
-                    // Scale SVG if too big
-                    const maxSize = Math.min(workW, workH) * 0.8;
-                    const currentSize = Math.max(this.svgGroup.width, this.svgGroup.height);
-                    let scale = 1;
-                    if (currentSize > maxSize) {
-                        scale = maxSize / currentSize;
-                    }
+                    // Obtener la posición del origen configurado
+                    const origin = this.workArea.origin || 'bottom-left';
+                    const originPos = this.getOriginPosition(origin, workW, workH);
 
-                    // Calculate bounding box to find actual content bounds
-                    const bbox = this.svgGroup.getBoundingRect(true, true);
+                    // IMPORTANTE: Establecer el punto de origen del objeto igual al del área
+                    const objectOrigin = this.getObjectOriginFromWorkArea();
+
+                    // NO escalar automáticamente - mantener tamaño real
+                    // El usuario puede escalar manualmente si lo necesita
+                    const scale = 1;
+
+                    // Posicionar el SVG cerca del origen configurado con un pequeño offset
+                    // El objeto usa el mismo punto de referencia que el área de trabajo
+                    const offsetMM = 10; // 10mm de offset
+                    const offsetPx = offsetMM * this.pixelsPerMM;
 
                     this.svgGroup.set({
-                        left: originX + 20,
-                        top: originY - (this.svgGroup.height * scale) - 20,
+                        left: originPos.x + offsetPx,
+                        top: originPos.y + offsetPx,
+                        originX: objectOrigin.originX,
+                        originY: objectOrigin.originY,
                         scaleX: scale,
                         scaleY: scale,
                         selectable: true,
                         hasControls: true,
-                        hasBorders: true,
-                        // Set origin to center for proper manipulation
-                        originX: 'center',
-                        originY: 'center'
+                        hasBorders: true
                     });
 
-                    // Store the bounding box offset for later use in G-code generation
-                    this.svgGroup.bboxOffset = {
-                        x: bbox.left,
-                        y: bbox.top
-                    };
+                    console.log('   📍 Object origin set to:', objectOrigin.originX, objectOrigin.originY);
+
+                    // No necesitamos bboxOffset con el nuevo sistema de coordenadas
 
                     // Si se proporcionó un elementId, asignarlo al objeto
                     if (elementId) {
@@ -669,6 +1086,9 @@ class CanvasManager {
                     console.log('✅ SVG positioned at origin');
                     console.log('   Size:', this.svgGroup.width.toFixed(1), 'x', this.svgGroup.height.toFixed(1), 'px');
                     console.log('   Scale:', scale.toFixed(2));
+                    console.log('   ScaledWidth:', (this.svgGroup.width * this.svgGroup.scaleX).toFixed(1), 'px');
+                    console.log('   ScaledHeight:', (this.svgGroup.height * this.svgGroup.scaleY).toFixed(1), 'px');
+                    console.log('   BoundingRect:', this.svgGroup.getBoundingRect());
 
                     resolve(this.svgGroup); // Devolver el grupo para agregarlo a elementos
 
@@ -732,7 +1152,7 @@ class CanvasManager {
         const originX = centerX - workW / 2;
         const originY = centerY + workH / 2;
 
-        if (element.type === 'path' || element.type === 'svg') {
+        if (element.type === 'path' || element.type === 'svg' || element.type === 'maker') {
             const pathData = this.extractPathFromObject(element.fabricObject, originX, originY);
             if (pathData && pathData.points.length > 0) {
                 paths.push(pathData);
@@ -886,35 +1306,65 @@ class CanvasManager {
     }
 
     transformPoint(x, y, matrix, originX, originY, groupLeft = null, groupTop = null) {
-        // Apply Fabric transform matrix to get absolute canvas coordinates
-        const transformed = fabric.util.transformPoint(
-            { x: x, y: y },
-            matrix
-        );
+        // 1. Aplicar la matriz de transformación de Fabric para obtener coordenadas absolutas en canvas
+        const transformed = fabric.util.transformPoint({ x: x, y: y }, matrix);
+        const canvasX = transformed.x;
+        const canvasY = transformed.y;
 
-        // Use provided group position or extract from matrix
-        // When originY: 'bottom' is set, the matrix doesn't reflect the actual left/top
-        const groupX = groupLeft !== null ? groupLeft : matrix[4];
-        const groupY = groupTop !== null ? groupTop : matrix[5];
+        // 2. Obtener la posición del origen configurado en el canvas
+        const workW = this.workArea.width * this.pixelsPerMM;
+        const workH = this.workArea.height * this.pixelsPerMM;
+        const origin = this.workArea.origin || 'bottom-left';
+        const originPos = this.getOriginPosition(origin, workW, workH);
 
-        // Convert transformed point from absolute canvas to relative to group
-        const relativeX = transformed.x - groupX;
-        const relativeY = transformed.y - groupY;
+        // 3. Calcular la distancia desde el origen configurado
+        const deltaX = canvasX - originPos.x;
+        const deltaY = canvasY - originPos.y;
 
-        // Now convert group position + relative offset to machine coordinates
-        const machineX = (groupX - originX) / this.pixelsPerMM + relativeX / this.pixelsPerMM;
-        const machineY = (originY - groupY) / this.pixelsPerMM - relativeY / this.pixelsPerMM;
+        // 4. Convertir a coordenadas de máquina según la dirección de los ejes
+        let machineX, machineY;
+
+        switch(origin) {
+            case 'top-left':
+                // X+ derecha, Y+ abajo
+                machineX = deltaX / this.pixelsPerMM;
+                machineY = deltaY / this.pixelsPerMM;
+                break;
+            case 'top-right':
+                // X+ izquierda (invertir), Y+ abajo
+                machineX = -deltaX / this.pixelsPerMM;
+                machineY = deltaY / this.pixelsPerMM;
+                break;
+            case 'bottom-left':
+                // X+ derecha, Y+ arriba (invertir Y) - DEFAULT CNC
+                machineX = deltaX / this.pixelsPerMM;
+                machineY = -deltaY / this.pixelsPerMM;
+                break;
+            case 'bottom-right':
+                // X+ izquierda (invertir X), Y+ arriba (invertir Y)
+                machineX = -deltaX / this.pixelsPerMM;
+                machineY = -deltaY / this.pixelsPerMM;
+                break;
+            case 'center':
+                // X+ derecha, Y+ arriba (invertir Y) - Permite negativos
+                machineX = deltaX / this.pixelsPerMM;
+                machineY = -deltaY / this.pixelsPerMM;
+                break;
+            default:
+                // Fallback a bottom-left
+                machineX = deltaX / this.pixelsPerMM;
+                machineY = -deltaY / this.pixelsPerMM;
+        }
 
         // Debug: log first point transformation
         if (x === 0 && y === 0) {
             console.log('🔍 Point transformation debug:');
+            console.log('   Origin mode:', origin);
             console.log('   Input (local):', x, y);
-            console.log('   After matrix (canvas):', transformed.x.toFixed(2), transformed.y.toFixed(2));
-            console.log('   Group position (provided):', groupLeft, groupTop);
-            console.log('   Group position (used):', groupX.toFixed(2), groupY.toFixed(2));
-            console.log('   Matrix position:', matrix[4].toFixed(2), matrix[5].toFixed(2));
-            console.log('   Relative to group:', relativeX.toFixed(2), relativeY.toFixed(2));
-            console.log('   Origin (canvas):', originX.toFixed(2), originY.toFixed(2));
+            console.log('   After matrix (canvas):', canvasX.toFixed(2), canvasY.toFixed(2));
+            console.log('   Origin position (canvas):', originPos.x.toFixed(2), originPos.y.toFixed(2));
+            console.log('   Delta from origin:', deltaX.toFixed(2), deltaY.toFixed(2));
+            console.log('   Pixels per MM:', this.pixelsPerMM);
             console.log('   Final (machine mm):', machineX.toFixed(3), machineY.toFixed(3));
         }
 

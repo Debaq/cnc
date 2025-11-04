@@ -21,6 +21,7 @@ window.grblApp = function() {
         connected: false,
         svgLoaded: false,
         gcodeGenerated: false,
+        gcodeNeedsRegeneration: false, // True cuando se cambia el origen y hay que regenerar
         sending: false,
 
         // Machine
@@ -138,14 +139,22 @@ window.grblApp = function() {
         show3DGrid: true,
         show3DAxes: true,
 
-        // Serial connection (nuevas)
-        availablePorts: [],
-        serialPort: '',
+        // Serial connection
         baudRate: 115200,
+
+        // Project Management
+        projectName: 'Untitled Project',
+        projectModified: false,
+        lastSavedTime: null,
+        autoSaveInterval: null,
 
         // Modal Work Area
         showWorkAreaModal: false,
-        tempWorkArea: { width: 400, height: 400 },
+        tempWorkArea: { width: 400, height: 400, origin: 'bottom-left' },
+
+        // Modal Recovery
+        showRecoveryModal: false,
+        recoveryData: null,
 
         // Modal GRBL Settings
         showGRBLModal: false,
@@ -243,6 +252,11 @@ window.grblApp = function() {
             if (viewer3dCanvas) {
                 globalGCodeViewer = new GCodeViewer(viewer3dCanvas);
                 globalGCodeViewer.init();
+
+                // Sync work area from canvas manager
+                const wa = this.canvasManager.workArea;
+                globalGCodeViewer.setWorkArea(wa.width, wa.height, wa.origin);
+
                 console.log('✅ 3D Viewer inicializado');
             } else {
                 console.warn('⚠️ 3D Viewer canvas not found');
@@ -253,6 +267,11 @@ window.grblApp = function() {
             this.materials = await this.libraryManager.loadMaterials();
             console.log('✅ Libraries loaded:', this.tools.length, 'tools,', this.materials.length, 'materials');
 
+            // Project Management: Auto-save and recovery
+            this.startAutoSave();
+            this.checkRecovery();
+            console.log('✅ Project management initialized');
+
             console.log('✅ App initialized successfully!');
         },
 
@@ -261,12 +280,15 @@ window.grblApp = function() {
             if (this.connected) {
                 await this.serialControl.disconnect();
                 this.connected = false;
-                this.addConsoleLine('Disconnected');
+                this.addConsoleLine('🔌 Desconectado de GRBL');
             } else {
-                const result = await this.serialControl.connect();
+                // Pasar el baudRate seleccionado
+                const result = await this.serialControl.connect(this.baudRate);
                 this.connected = result;
                 if (result) {
-                    this.addConsoleLine('✅ Connected to GRBL');
+                    this.addConsoleLine(`✅ Conectado a GRBL (${this.baudRate} baud)`);
+                } else {
+                    this.addConsoleLine('❌ Error al conectar');
                 }
             }
         },
@@ -308,6 +330,7 @@ window.grblApp = function() {
 
                 this.svgLoaded = true;
                 this.updateConfigStatus();
+                this.markModified();
                 this.addConsoleLine('✅ SVG cargado: ' + file.name);
 
                 // Actualizar dimensiones iniciales
@@ -452,23 +475,65 @@ window.grblApp = function() {
             const obj = this.canvasManager.fabricCanvas.getActiveObject();
             if (!obj) return;
 
-            const origin = this.canvasManager.getOrigin();
+            // Obtener origen del área y dimensiones
+            const workW = this.canvasManager.workArea.width * this.canvasManager.pixelsPerMM;
+            const workH = this.canvasManager.workArea.height * this.canvasManager.pixelsPerMM;
+            const originType = this.canvasManager.workArea.origin || 'bottom-left';
+            const areaOriginCanvas = this.canvasManager.getOriginPosition(originType, workW, workH);
 
-            // Convert from machine coordinates (mm) to canvas pixels
-            const canvasX = origin.x + (this.svgX * this.canvasManager.pixelsPerMM);
-            const canvasY = origin.y - (this.svgY * this.canvasManager.pixelsPerMM);
+            // Convertir de coordenadas de máquina (mm) a píxeles desde el origen
+            let deltaXPx, deltaYPx;
+
+            switch(originType) {
+                case 'top-left':
+                    // X+ derecha, Y+ abajo
+                    deltaXPx = this.svgX * this.canvasManager.pixelsPerMM;
+                    deltaYPx = this.svgY * this.canvasManager.pixelsPerMM;
+                    break;
+                case 'top-right':
+                    // X+ izquierda (invertir), Y+ abajo
+                    deltaXPx = -this.svgX * this.canvasManager.pixelsPerMM;
+                    deltaYPx = this.svgY * this.canvasManager.pixelsPerMM;
+                    break;
+                case 'bottom-left':
+                    // X+ derecha, Y+ arriba (invertir Y)
+                    deltaXPx = this.svgX * this.canvasManager.pixelsPerMM;
+                    deltaYPx = -this.svgY * this.canvasManager.pixelsPerMM;
+                    break;
+                case 'bottom-right':
+                    // X+ izquierda (invertir X), Y+ arriba (invertir Y)
+                    deltaXPx = -this.svgX * this.canvasManager.pixelsPerMM;
+                    deltaYPx = -this.svgY * this.canvasManager.pixelsPerMM;
+                    break;
+                case 'center':
+                    // X+ derecha, Y+ arriba (invertir Y)
+                    deltaXPx = this.svgX * this.canvasManager.pixelsPerMM;
+                    deltaYPx = -this.svgY * this.canvasManager.pixelsPerMM;
+                    break;
+                default:
+                    deltaXPx = this.svgX * this.canvasManager.pixelsPerMM;
+                    deltaYPx = -this.svgY * this.canvasManager.pixelsPerMM;
+            }
+
+            // Calcular posición en canvas del punto de origen del objeto
+            const targetCanvasX = areaOriginCanvas.x + deltaXPx;
+            const targetCanvasY = areaOriginCanvas.y + deltaYPx;
 
             console.log('🔧 updateSVGPosition:');
             console.log('   Requested:', this.svgX, this.svgY, 'mm');
-            console.log('   Origin:', origin.x, origin.y);
-            console.log('   Setting object to:', canvasX, canvasY);
+            console.log('   Origin type:', originType);
+            console.log('   Area origin (canvas):', areaOriginCanvas.x, areaOriginCanvas.y);
+            console.log('   Target origin point (canvas):', targetCanvasX, targetCanvasY);
 
-            obj.set({
-                left: canvasX,
-                top: canvasY
-            });
+            // Usar setPositionByOrigin para posicionar el objeto correctamente
+            // según su punto de referencia (originX/originY)
+            obj.setPositionByOrigin(
+                { x: targetCanvasX, y: targetCanvasY },
+                obj.originX,
+                obj.originY
+            );
 
-            obj.setCoords(); // Actualizar los controles visuales
+            obj.setCoords();
             this.canvasManager.fabricCanvas.renderAll();
             this.updateTransformInfo({
                 x: obj.left,
@@ -482,8 +547,6 @@ window.grblApp = function() {
             // Actualizar dimensiones y posición del objeto activo
             const obj = this.canvasManager.fabricCanvas.getActiveObject();
             if (!obj) return;
-
-            const origin = this.canvasManager.getOrigin();
 
             // Para círculos, usar el radio
             if (obj.type === 'circle') {
@@ -504,9 +567,10 @@ window.grblApp = function() {
                 this.svgHeight = Math.round((obj.height * obj.scaleY) / this.canvasManager.pixelsPerMM);
             }
 
-            // Update position (convert from canvas pixels to machine mm)
-            this.svgX = Math.round((obj.left - origin.x) / this.canvasManager.pixelsPerMM);
-            this.svgY = Math.round((origin.y - obj.top) / this.canvasManager.pixelsPerMM);
+            // Obtener coordenadas de máquina correctas según el origen configurado
+            const machineCoords = this.canvasManager.getObjectMachineCoordinates(obj);
+            this.svgX = machineCoords.x;
+            this.svgY = machineCoords.y;
         },
 
         // G-code
@@ -569,14 +633,22 @@ window.grblApp = function() {
             this.gcode = allGcode;
             this.gcodeLines = allGcode.split('\n').length;
             this.gcodeGenerated = true;
+            this.gcodeNeedsRegeneration = false; // Quitar el flag cuando se regenera
+            this.markModified();
             this.addConsoleLine('✅ G-code generado: ' + this.gcodeLines + ' líneas');
 
-            // Update 3D viewer if initialized
-            if (globalGCodeViewer) {
-                this.updateViewer3D();
-            }
+            // Cambiar automáticamente a Preview primero
+            setTimeout(() => {
+                this.currentWorkspace = 'preview';
+                this.addConsoleLine('👁️ Cambiando a vista previa...');
 
-            this.currentTab = 'gcode';
+                // Update 3D viewer DESPUÉS de que el canvas sea visible
+                setTimeout(() => {
+                    if (globalGCodeViewer) {
+                        this.updateViewer3D();
+                    }
+                }, 100); // Pequeño delay adicional para que el DOM se actualice
+            }, 300);
         },
 
         groupElementsByTool() {
@@ -715,6 +787,7 @@ window.grblApp = function() {
         openWorkAreaModal() {
             this.tempWorkArea.width = this.canvasManager.workArea.width;
             this.tempWorkArea.height = this.canvasManager.workArea.height;
+            this.tempWorkArea.origin = this.canvasManager.workArea.origin || 'bottom-left';
             this.showWorkAreaModal = true;
         },
 
@@ -723,9 +796,46 @@ window.grblApp = function() {
         },
 
         applyWorkArea() {
-            this.canvasManager.setWorkArea(this.tempWorkArea.width, this.tempWorkArea.height);
+            // Aplicar cambios en el canvas manager y obtener información sobre los cambios
+            const changes = this.canvasManager.setWorkArea(
+                this.tempWorkArea.width,
+                this.tempWorkArea.height,
+                this.tempWorkArea.origin
+            );
+
+            // Also update 3D viewer work area
+            if (globalGCodeViewer) {
+                globalGCodeViewer.setWorkArea(
+                    this.tempWorkArea.width,
+                    this.tempWorkArea.height,
+                    this.tempWorkArea.origin
+                );
+            }
+
+            // Si cambió el origen Y hay elementos en el canvas
+            if (changes.originChanged && this.elements.length > 0) {
+                console.log('🔄 Origin changed - coordenadas actualizadas');
+
+                // Si había G-code generado, descartarlo
+                if (this.gcodeGenerated) {
+                    this.gcode = '';
+                    this.gcodeGenerated = false;
+                    this.gcodeNeedsRegeneration = true;
+
+                    // Volver al workspace de diseño
+                    if (this.currentWorkspace !== 'design') {
+                        this.currentWorkspace = 'design';
+                    }
+
+                    this.addConsoleLine('⚠️ Origen cambiado - G-code descartado. Por favor regenera el G-code.');
+                } else {
+                    // No había G-code, pero marcar que necesita generación
+                    this.gcodeNeedsRegeneration = true;
+                }
+            }
+
             this.closeWorkAreaModal();
-            this.addConsoleLine(`✅ Work area set to ${this.tempWorkArea.width} x ${this.tempWorkArea.height} mm`);
+            this.addConsoleLine(`✅ Work area set to ${this.tempWorkArea.width} x ${this.tempWorkArea.height} mm, origin: ${this.tempWorkArea.origin}`);
         },
 
         setPresetWorkArea(width, height) {
@@ -971,7 +1081,72 @@ window.grblApp = function() {
 
             this.elements.splice(index, 1);
             this.updateConfigStatus();
+            this.markModified();
             this.addConsoleLine(`🗑️ Eliminado: ${element.name}`);
+        },
+
+        duplicateElement(elementId) {
+            const element = this.elements.find(e => e.id === elementId);
+            if (!element) return;
+
+            // Crear copia profunda del elemento
+            const duplicate = JSON.parse(JSON.stringify(element));
+            duplicate.id = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            duplicate.name = element.name + ' (copia)';
+
+            // Desplazar la posición ligeramente
+            if (element.fabricObject) {
+                const left = element.fabricObject.left + 20;
+                const top = element.fabricObject.top + 20;
+
+                // Recrear el objeto en Fabric.js
+                if (element.type === 'svg') {
+                    // Para SVG, necesitamos clonar el objeto de Fabric
+                    element.fabricObject.clone((cloned) => {
+                        cloned.set({
+                            left: left,
+                            top: top
+                        });
+                        this.canvasManager.fabricCanvas.add(cloned);
+                        duplicate.fabricObject = cloned;
+                        this.elements.push(duplicate);
+                        this.canvasManager.fabricCanvas.renderAll();
+                        this.addConsoleLine(`📋 Duplicado: ${duplicate.name}`);
+                    });
+                    return;
+                } else if (element.type === 'maker') {
+                    // Para Maker.js, regenerar el modelo
+                    this.addMakerModelToDuplicate(duplicate, left, top);
+                    return;
+                }
+            }
+
+            // Para otros tipos o si no hay fabricObject
+            this.elements.push(duplicate);
+            this.addConsoleLine(`📋 Duplicado: ${duplicate.name}`);
+        },
+
+        addMakerModelToDuplicate(duplicate, left, top) {
+            // Regenerar el modelo Maker.js con los parámetros del duplicado
+            const model = makerjs.model.clone(makerjs.models[duplicate.makerType], duplicate.makerParams);
+            const svg = makerjs.exporter.toSVG(model);
+
+            fabric.loadSVGFromString(svg, (objects, options) => {
+                const obj = fabric.util.groupSVGElements(objects, options);
+                obj.set({
+                    left: left,
+                    top: top,
+                    stroke: '#7B6BB8',
+                    strokeWidth: 2,
+                    fill: 'transparent',
+                    selectable: true
+                });
+                this.canvasManager.fabricCanvas.add(obj);
+                duplicate.fabricObject = obj;
+                this.elements.push(duplicate);
+                this.canvasManager.fabricCanvas.renderAll();
+                this.addConsoleLine(`📋 Duplicado: ${duplicate.name}`);
+            });
         },
 
         findElementById(id) {
@@ -1201,10 +1376,23 @@ window.grblApp = function() {
                 // Cargar SVG y pasar el elementId
                 const svgGroup = await this.canvasManager.loadSVG(file, elementId);
 
+                // IMPORTANTE: Maker.js genera SVG en "user units" (píxeles)
+                // Escalar según pixelsPerMM para que coincida con milímetros reales
+                const mmScale = this.canvasManager.pixelsPerMM;
+                svgGroup.set({
+                    scaleX: mmScale,
+                    scaleY: mmScale
+                });
+
+                // Recalcular coordenadas de los controles después de escalar
+                svgGroup.setCoords();
+                this.canvasManager.fabricCanvas.renderAll();
+
                 // Actualizar el fabricObject del elemento
                 element.fabricObject = svgGroup;
 
                 this.updateConfigStatus();
+                this.markModified();
                 this.addConsoleLine(`✅ Modelo Maker.js agregado: ${modelType}`);
 
                 // Actualizar inputs
@@ -1505,29 +1693,7 @@ window.grblApp = function() {
         },
 
         // ============================================
-        // FUNCIONES PARA CONNECTION (HEADER)
-        // ============================================
-
-        async connect() {
-            if (!this.serialPort) {
-                alert('Por favor selecciona un puerto serial');
-                return;
-            }
-            const result = await this.serialControl.connect(this.serialPort, this.baudRate);
-            this.connected = result;
-            if (result) {
-                this.addConsoleLine('✅ Conectado a GRBL en ' + this.serialPort);
-            }
-        },
-
-        async disconnect() {
-            await this.serialControl.disconnect();
-            this.connected = false;
-            this.addConsoleLine('🔌 Desconectado');
-        },
-
-        // ============================================
-        // FIN FUNCIONES NUEVAS
+        // CONNECTION - Usar toggleConnection() en su lugar
         // ============================================
 
         // ============================================
@@ -1929,6 +2095,591 @@ window.grblApp = function() {
             activeObject.set('flipY', !activeObject.flipY);
             this.canvasManager.fabricCanvas.renderAll();
             this.addConsoleLine('↕️ Elemento reflejado verticalmente');
+        },
+
+        // ====================================
+        // PROJECT MANAGEMENT
+        // ====================================
+
+        /**
+         * Serializa el proyecto completo a un objeto JSON
+         * Estructura ampliable y versionada
+         */
+        serializeProject() {
+            const projectData = {
+                // Metadata
+                version: '1.0',
+                metadata: {
+                    created: this.lastSavedTime || new Date().toISOString(),
+                    modified: new Date().toISOString(),
+                    appVersion: '4.0',
+                    projectName: this.projectName
+                },
+
+                // Work Area Configuration
+                workArea: {
+                    width: this.canvasManager.workArea.width,
+                    height: this.canvasManager.workArea.height,
+                    origin: this.canvasManager.workArea.origin
+                },
+
+                // Elements - Guardar solo datos serializables
+                elements: this.elements.map(el => ({
+                    id: el.id,
+                    type: el.type,
+                    name: el.name,
+                    visible: el.visible,
+                    locked: el.locked,
+                    config: el.config,
+
+                    // Maker.js specific
+                    makerType: el.makerType,
+                    makerParams: el.makerParams,
+
+                    // Fabric.js transform data
+                    transform: el.fabricObject ? {
+                        left: el.fabricObject.left,
+                        top: el.fabricObject.top,
+                        scaleX: el.fabricObject.scaleX,
+                        scaleY: el.fabricObject.scaleY,
+                        angle: el.fabricObject.angle,
+                        flipX: el.fabricObject.flipX,
+                        flipY: el.fabricObject.flipY,
+                        width: el.fabricObject.width,
+                        height: el.fabricObject.height
+                    } : null,
+
+                    // SVG data (si es SVG necesitamos guardar el contenido)
+                    svgData: el.svgData || null,
+
+                    // Children (para grupos)
+                    children: el.children || []
+                })),
+
+                // Global Configuration
+                globalConfig: this.globalConfig,
+
+                // G-code
+                gcode: {
+                    generated: this.gcodeGenerated,
+                    code: this.gcode,
+                    lines: this.gcodeLines
+                },
+
+                // Tools & Materials (solo IDs y referencias)
+                selectedTool: this.globalConfig.tool,
+                selectedMaterial: this.globalConfig.material,
+
+                // Extensible: Permite agregar más campos en el futuro sin romper compatibilidad
+                extensions: {}
+            };
+
+            return projectData;
+        },
+
+        /**
+         * Deserializa y carga un proyecto desde un objeto JSON
+         */
+        async deserializeProject(projectData) {
+            try {
+                console.log('📂 Loading project:', projectData.metadata.projectName);
+
+                // Validar versión
+                if (!projectData.version) {
+                    throw new Error('Invalid project file: missing version');
+                }
+
+                // Limpiar proyecto actual
+                this.elements = [];
+                this.canvasManager.fabricCanvas.clear();
+                this.canvasManager.setupGrid();
+                this.canvasManager.setupOrigin();
+
+                // Cargar metadata
+                this.projectName = projectData.metadata.projectName || 'Untitled Project';
+                this.lastSavedTime = projectData.metadata.modified;
+
+                // Cargar Work Area
+                if (projectData.workArea) {
+                    this.canvasManager.setWorkArea(
+                        projectData.workArea.width,
+                        projectData.workArea.height,
+                        projectData.workArea.origin
+                    );
+
+                    // Also sync with 3D viewer
+                    if (globalGCodeViewer) {
+                        globalGCodeViewer.setWorkArea(
+                            projectData.workArea.width,
+                            projectData.workArea.height,
+                            projectData.workArea.origin
+                        );
+                    }
+                }
+
+                // Cargar Global Config
+                if (projectData.globalConfig) {
+                    this.globalConfig = { ...this.globalConfig, ...projectData.globalConfig };
+                }
+
+                // Cargar elementos
+                if (projectData.elements && projectData.elements.length > 0) {
+                    for (const elementData of projectData.elements) {
+                        await this.recreateElement(elementData);
+                    }
+                }
+
+                // Cargar G-code si existe
+                if (projectData.gcode && projectData.gcode.generated) {
+                    this.gcode = projectData.gcode.code;
+                    this.gcodeLines = projectData.gcode.lines;
+                    this.gcodeGenerated = true;
+                }
+
+                this.projectModified = false;
+                this.addConsoleLine(`✅ Proyecto cargado: ${this.projectName}`);
+
+                return true;
+            } catch (error) {
+                console.error('❌ Error loading project:', error);
+                this.addConsoleLine(`❌ Error: ${error.message}`);
+                return false;
+            }
+        },
+
+        /**
+         * Recrea un elemento desde datos serializados
+         */
+        async recreateElement(elementData) {
+            // Para elementos Maker.js
+            if (elementData.type === 'maker' && elementData.makerType) {
+                // Recrear modelo Maker.js
+                const model = this.createMakerModel(elementData.makerType, elementData.makerParams);
+                const svg = makerjs.exporter.toSVG(model);
+                const blob = new Blob([svg], { type: 'image/svg+xml' });
+                const file = new File([blob], `${elementData.makerType}.svg`, { type: 'image/svg+xml' });
+
+                // Cargar como SVG
+                const svgGroup = await this.canvasManager.loadSVG(file, elementData.id);
+
+                // IMPORTANTE: Maker.js genera SVG en "user units" (píxeles)
+                // Escalar según pixelsPerMM para que coincida con milímetros reales
+                const mmScale = this.canvasManager.pixelsPerMM;
+                svgGroup.set({
+                    scaleX: mmScale,
+                    scaleY: mmScale
+                });
+
+                // Aplicar transform guardado (si existe)
+                if (elementData.transform) {
+                    // Preservar la escala de mm, pero aplicar otras transformaciones
+                    svgGroup.set({
+                        ...elementData.transform,
+                        scaleX: (elementData.transform.scaleX || 1) * mmScale,
+                        scaleY: (elementData.transform.scaleY || 1) * mmScale
+                    });
+                }
+
+                // Recalcular coordenadas de los controles después de escalar
+                svgGroup.setCoords();
+
+                // Crear elemento
+                const element = {
+                    id: elementData.id,
+                    type: 'maker',
+                    makerType: elementData.makerType,
+                    makerParams: elementData.makerParams,
+                    name: elementData.name,
+                    visible: elementData.visible,
+                    locked: elementData.locked,
+                    config: elementData.config,
+                    fabricObject: svgGroup,
+                    children: []
+                };
+
+                this.elements.push(element);
+                this.canvasManager.fabricCanvas.renderAll();
+            }
+            // Para elementos SVG regulares
+            else if (elementData.type === 'svg' && elementData.svgData) {
+                // TODO: Implementar carga de SVG desde datos guardados
+                console.warn('SVG loading from saved data not yet implemented');
+            }
+            // Otros tipos se pueden agregar aquí
+        },
+
+        /**
+         * Guarda el proyecto como archivo .gmaker
+         */
+        saveProject() {
+            const projectData = this.serializeProject();
+            const jsonString = JSON.stringify(projectData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+
+            // Crear nombre de archivo
+            const fileName = `${this.projectName.replace(/[^a-z0-9]/gi, '_')}.gmaker`;
+
+            // Descargar archivo
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            this.projectModified = false;
+            this.lastSavedTime = new Date().toISOString();
+            this.addConsoleLine(`💾 Proyecto guardado: ${fileName}`);
+
+            // También guardar en localStorage como último guardado
+            localStorage.setItem('grbl_last_saved_project', jsonString);
+        },
+
+        /**
+         * Abre un archivo .gmaker
+         */
+        openProject() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.gmaker';
+
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                try {
+                    const text = await file.text();
+                    const projectData = JSON.parse(text);
+
+                    const success = await this.deserializeProject(projectData);
+                    if (success) {
+                        // Limpiar auto-guardado
+                        localStorage.removeItem('grbl_autosave');
+                    }
+                } catch (error) {
+                    alert('Error al abrir el archivo: ' + error.message);
+                }
+            };
+
+            input.click();
+        },
+
+        /**
+         * Nuevo proyecto
+         */
+        newProject() {
+            if (this.projectModified) {
+                if (!confirm('¿Descartar cambios no guardados?')) {
+                    return;
+                }
+            }
+
+            // Limpiar todo
+            this.elements = [];
+            this.canvasManager.fabricCanvas.clear();
+            this.canvasManager.setupGrid();
+            this.canvasManager.setupOrigin();
+            this.gcode = '';
+            this.gcodeGenerated = false;
+            this.projectName = 'Untitled Project';
+            this.projectModified = false;
+            this.lastSavedTime = null;
+
+            this.addConsoleLine('📄 Nuevo proyecto creado');
+        },
+
+        /**
+         * Auto-guardado en localStorage
+         */
+        autoSave() {
+            if (!this.projectModified) return;
+
+            try {
+                const projectData = this.serializeProject();
+                const jsonString = JSON.stringify(projectData);
+                localStorage.setItem('grbl_autosave', jsonString);
+                localStorage.setItem('grbl_autosave_timestamp', new Date().toISOString());
+                console.log('💾 Auto-guardado realizado');
+            } catch (error) {
+                console.error('❌ Error en auto-guardado:', error);
+            }
+        },
+
+        /**
+         * Inicia el auto-guardado periódico
+         */
+        startAutoSave() {
+            // Auto-guardar cada 2 minutos
+            this.autoSaveInterval = setInterval(() => {
+                this.autoSave();
+            }, 120000); // 2 minutos
+        },
+
+        /**
+         * Verifica si hay datos de recuperación al iniciar
+         */
+        checkRecovery() {
+            const autosaveData = localStorage.getItem('grbl_autosave');
+            const lastSaved = localStorage.getItem('grbl_last_saved_project');
+            const timestamp = localStorage.getItem('grbl_autosave_timestamp');
+
+            if (autosaveData && timestamp) {
+                // Verificar si el auto-guardado es diferente al último guardado manualmente
+                if (autosaveData !== lastSaved) {
+                    try {
+                        this.recoveryData = JSON.parse(autosaveData);
+                        this.showRecoveryModal = true;
+
+                        const date = new Date(timestamp);
+                        console.log('🔄 Datos de recuperación encontrados desde:', date.toLocaleString());
+                    } catch (error) {
+                        console.error('❌ Error al parsear datos de recuperación:', error);
+                        localStorage.removeItem('grbl_autosave');
+                    }
+                }
+            }
+        },
+
+        /**
+         * Recupera el proyecto desde auto-guardado
+         */
+        async recoverProject() {
+            if (!this.recoveryData) return;
+
+            const success = await this.deserializeProject(this.recoveryData);
+            if (success) {
+                this.projectModified = true;
+                this.showRecoveryModal = false;
+                this.addConsoleLine('🔄 Proyecto recuperado desde auto-guardado');
+
+                // Preguntar si quiere guardar
+                setTimeout(() => {
+                    if (confirm('¿Deseas guardar el proyecto recuperado?')) {
+                        this.saveProject();
+                    }
+                }, 500);
+            }
+        },
+
+        /**
+         * Descarta la recuperación
+         */
+        discardRecovery() {
+            localStorage.removeItem('grbl_autosave');
+            localStorage.removeItem('grbl_autosave_timestamp');
+            this.recoveryData = null;
+            this.showRecoveryModal = false;
+            this.addConsoleLine('❌ Recuperación descartada');
+        },
+
+        /**
+         * Marca el proyecto como modificado
+         */
+        markModified() {
+            this.projectModified = true;
+        },
+
+        // ====================================
+        // TESTING & DEBUGGING
+        // ====================================
+
+        /**
+         * Añade un cuadrado de prueba en posición conocida
+         * Para verificar que las coordenadas del G-code coincidan con el diseño
+         *
+         * IMPORTANTE: El objeto usa el mismo origen configurado en el área de trabajo.
+         * - Si origen = 'bottom-left' → objeto con originX:'left', originY:'bottom'
+         * - Si origen = 'center' → objeto con originX:'center', originY:'center'
+         * - etc.
+         *
+         * Esto hace que (10,10) en G-code sea exactamente (10,10) desde el origen,
+         * sin importar qué origen esté configurado.
+         */
+        async addTestSquare() {
+            console.log('🧪 Añadiendo cuadrado de prueba...');
+
+            // Crear cuadrado 50x50mm usando Maker.js
+            const params = {
+                width: 50,  // 50mm de ancho
+                height: 50  // 50mm de alto
+            };
+
+            try {
+                // Crear modelo Maker.js
+                const model = new makerjs.models.Rectangle(params.width, params.height);
+                const svg = makerjs.exporter.toSVG(model);
+
+                // DEBUG: Ver el SVG generado
+                console.log('🔍 SVG generado por Maker.js:');
+                console.log(svg);
+
+                // Crear blob y file
+                const blob = new Blob([svg], { type: 'image/svg+xml' });
+                const file = new File([blob], 'test_square_50x50.svg', { type: 'image/svg+xml' });
+
+                // Generar ID único
+                const elementId = 'test_square_' + Date.now();
+
+                // Crear elemento
+                const element = {
+                    id: elementId,
+                    type: 'maker',
+                    makerType: 'Rectangle',
+                    name: 'TEST: Cuadrado 50x50mm @ (10, 10)',
+                    visible: true,
+                    locked: false,
+                    expanded: false,
+                    showConfig: false,
+                    fabricObject: null,
+                    config: null,
+                    makerParams: params,
+                    children: []
+                };
+
+                this.elements.push(element);
+
+                // Cargar SVG en el canvas (ya tiene el origen configurado)
+                const svgGroup = await this.canvasManager.loadSVG(file, elementId);
+
+                // IMPORTANTE: Maker.js genera SVG en "user units" (píxeles por defecto)
+                // Necesitamos escalar según pixelsPerMM para que coincida con milímetros
+                const mmScale = this.canvasManager.pixelsPerMM;
+                console.log('🔧 Escalando objeto de Maker.js: pixelsPerMM =', mmScale.toFixed(2));
+                svgGroup.set({
+                    scaleX: mmScale,
+                    scaleY: mmScale
+                });
+
+                // IMPORTANTE: Recalcular coordenadas de los controles después de escalar
+                svgGroup.setCoords();
+
+                // Calcular dimensiones del área de trabajo
+                const workW = this.canvasManager.workArea.width * this.canvasManager.pixelsPerMM;
+                const workH = this.canvasManager.workArea.height * this.canvasManager.pixelsPerMM;
+                const centerX = this.canvasManager.fabricCanvas.width / 2;
+                const centerY = this.canvasManager.fabricCanvas.height / 2;
+
+                // Calcular origen del G-code en canvas según configuración
+                const origin = this.canvasManager.workArea.origin || 'bottom-left';
+                let gcodeOriginX, gcodeOriginY;
+
+                switch (origin) {
+                    case 'bottom-left':
+                        gcodeOriginX = centerX - workW / 2;
+                        gcodeOriginY = centerY + workH / 2;
+                        break;
+                    case 'bottom-center':
+                        gcodeOriginX = centerX;
+                        gcodeOriginY = centerY + workH / 2;
+                        break;
+                    case 'bottom-right':
+                        gcodeOriginX = centerX + workW / 2;
+                        gcodeOriginY = centerY + workH / 2;
+                        break;
+                    case 'center-left':
+                        gcodeOriginX = centerX - workW / 2;
+                        gcodeOriginY = centerY;
+                        break;
+                    case 'center':
+                        gcodeOriginX = centerX;
+                        gcodeOriginY = centerY;
+                        break;
+                    case 'center-right':
+                        gcodeOriginX = centerX + workW / 2;
+                        gcodeOriginY = centerY;
+                        break;
+                    case 'top-left':
+                        gcodeOriginX = centerX - workW / 2;
+                        gcodeOriginY = centerY - workH / 2;
+                        break;
+                    case 'top-center':
+                        gcodeOriginX = centerX;
+                        gcodeOriginY = centerY - workH / 2;
+                        break;
+                    case 'top-right':
+                        gcodeOriginX = centerX + workW / 2;
+                        gcodeOriginY = centerY - workH / 2;
+                        break;
+                    default:
+                        gcodeOriginX = centerX - workW / 2;
+                        gcodeOriginY = centerY + workH / 2;
+                }
+
+                // Posición deseada en G-code: (10, 10) mm desde el origen
+                const targetGcodeX = 10;
+                const targetGcodeY = 10;
+
+                // Convertir de coordenadas G-code a coordenadas canvas
+                // G-code: X aumenta derecha, Y aumenta arriba
+                // Canvas: X aumenta derecha, Y aumenta abajo
+                //
+                // Para bottom-left (origen más común en CNC):
+                // - gcodeOriginX es el borde izquierdo
+                // - gcodeOriginY es el borde inferior (Y máxima en canvas)
+                // - Un punto en (10, 10) G-code está:
+                //   - 10mm a la derecha del origen: gcodeOriginX + 10*pxPerMM
+                //   - 10mm arriba del origen: gcodeOriginY - 10*pxPerMM (porque Y canvas va abajo)
+                //
+                // Como el objeto tiene originX/originY igual al área:
+                // - Si originX:'left', left se refiere al borde izquierdo del objeto
+                // - Si originY:'bottom', top se refiere al borde inferior del objeto
+
+                let canvasLeft, canvasTop;
+
+                if (origin === 'bottom-left') {
+                    // El origen del objeto es bottom-left
+                    // left = posición del borde izquierdo
+                    // top = posición del borde inferior (en canvas Y)
+                    canvasLeft = gcodeOriginX + (targetGcodeX * this.canvasManager.pixelsPerMM);
+                    canvasTop = gcodeOriginY - (targetGcodeY * this.canvasManager.pixelsPerMM);
+                } else {
+                    // Para otros orígenes, por ahora usar la misma lógica
+                    // TODO: Implementar para otros orígenes cuando sea necesario
+                    canvasLeft = gcodeOriginX + (targetGcodeX * this.canvasManager.pixelsPerMM);
+                    canvasTop = gcodeOriginY - (targetGcodeY * this.canvasManager.pixelsPerMM);
+                }
+
+                // Posicionar el cuadrado
+                svgGroup.set({
+                    left: canvasLeft,
+                    top: canvasTop
+                });
+
+                // Recalcular coordenadas de los controles después de posicionar
+                svgGroup.setCoords();
+
+                // Log del tamaño real del objeto para debug
+                const realWidthPx = svgGroup.width * svgGroup.scaleX;
+                const realHeightPx = svgGroup.height * svgGroup.scaleY;
+                const realWidthMm = realWidthPx / this.canvasManager.pixelsPerMM;
+                const realHeightMm = realHeightPx / this.canvasManager.pixelsPerMM;
+                console.log('📏 Objeto creado:');
+                console.log('   Dimensiones SVG (user units):', svgGroup.width, 'x', svgGroup.height);
+                console.log('   Escala aplicada:', svgGroup.scaleX.toFixed(2));
+                console.log('   Dimensiones escaladas (px):', realWidthPx.toFixed(1), 'x', realHeightPx.toFixed(1));
+                console.log('   Dimensiones en mm:', realWidthMm.toFixed(1), 'x', realHeightMm.toFixed(1));
+
+                element.fabricObject = svgGroup;
+
+                this.updateConfigStatus();
+                this.markModified();
+                this.canvasManager.fabricCanvas.renderAll();
+
+                this.addConsoleLine('🧪 TEST: Cuadrado 50x50mm añadido');
+                this.addConsoleLine('   Origen configurado: ' + origin);
+                this.addConsoleLine('   Posición objetivo (G-code): X' + targetGcodeX + '-' + (targetGcodeX + params.width) + ', Y' + targetGcodeY + '-' + (targetGcodeY + params.height));
+                this.addConsoleLine('   Canvas pos: left=' + canvasLeft.toFixed(1) + ', top=' + canvasTop.toFixed(1));
+                this.addConsoleLine('   Origen canvas: (' + gcodeOriginX.toFixed(1) + ', ' + gcodeOriginY.toFixed(1) + ')');
+                this.addConsoleLine('💡 El objeto tiene origen "' + svgGroup.originX + '-' + svgGroup.originY + '" (igual que el área)');
+                this.addConsoleLine('💡 Genera G-code y verifica que las coordenadas coincidan');
+
+                // Actualizar dimensiones
+                this.updateSVGDimensions();
+
+            } catch (error) {
+                console.error('❌ Error añadiendo cuadrado de prueba:', error);
+                this.addConsoleLine('❌ Error: ' + error.message);
+            }
         }
 
     };

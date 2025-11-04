@@ -42,6 +42,9 @@
 
         <!-- Custom Styles -->
         <link rel="stylesheet" href="css/style.css">
+        <link rel="stylesheet" href="css/modals.css">
+        <link rel="stylesheet" href="css/panels.css">
+        <link rel="stylesheet" href="css/forms.css">
     </head>
     <body class="bg-purple-bg">
         <div x-data="grblApp()" class="flex flex-col h-screen overflow-hidden">
@@ -170,6 +173,9 @@
             <!-- Panel Flotante de Propiedades -->
             <div x-template="'templates/components/floating-properties-panel.html'"></div>
 
+            <!-- Panel Flotante de G-code (Preview) -->
+            <div x-template="'templates/components/gcode-viewer-panel.html'"></div>
+
             <!-- Modals - Templates cargados dentro del contexto Alpine -->
             <div x-template="'templates/modals/work-area-modal.html'"></div>
             <div x-template="'templates/modals/global-config-modal.html'"></div>
@@ -177,6 +183,7 @@
             <div x-template="'templates/modals/help-modal.html'"></div>
             <div x-template="'templates/modals/tools-modal.html'"></div>
             <div x-template="'templates/modals/materials-modal.html'"></div>
+            <div x-template="'templates/modals/recovery-modal.html'"></div>
 
         </div><!-- Fin App Container -->
 
