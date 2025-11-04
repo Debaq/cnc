@@ -795,12 +795,12 @@ class GCodeViewer {
         const sizeZ = maxZ - minZ;
         const maxSize = Math.max(sizeX, sizeY, sizeZ);
 
-        // Position camera (Y is up in Three.js coordinates)
-        const distance = maxSize * 1.5;
+        // Position camera directly above (top view) - Y is up in Three.js
+        const distance = Math.max(maxSize * 1.5, 400); // Minimum distance for good view
         this.camera.position.set(
-            centerX + distance * 0.7,  // X offset (right)
-            centerY + distance * 0.8,  // Y offset (up)
-            centerZ + distance * 0.7   // Z offset (forward)
+            centerX,              // X centered
+            distance,             // Y offset (up) - directly above
+            centerZ               // Z centered
         );
         this.camera.lookAt(centerX, centerY, centerZ);
 
