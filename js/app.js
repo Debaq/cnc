@@ -272,6 +272,52 @@ window.grblApp = function() {
             this.checkRecovery();
             console.log('✅ Project management initialized');
 
+            // Watch for workspace changes to trigger resize
+            this.$watch('currentWorkspace', (newWorkspace, oldWorkspace) => {
+                console.log(`📐 Workspace changed: ${oldWorkspace} → ${newWorkspace}`);
+
+                // Delay más largo para asegurar que la transición x-show termine
+                setTimeout(() => {
+                    if (newWorkspace === 'design' && this.canvasManager) {
+                        console.log('🔄 Resizing design canvas...');
+                        this.canvasManager.resize();
+                    } else if (newWorkspace === 'preview' && globalGCodeViewer) {
+                        console.log('🔄 Resizing 3D viewer on workspace change...');
+                        globalGCodeViewer.handleResize();
+                        globalGCodeViewer.forceRender();
+
+                        // Segundo intento después de un poco más de tiempo
+                        // para asegurar que el canvas esté completamente visible
+                        setTimeout(() => {
+                            console.log('🔄 Second resize attempt for 3D viewer...');
+                            globalGCodeViewer.handleResize();
+                            globalGCodeViewer.forceRender();
+
+                            // Si hay G-code generado, actualizar el visor
+                            if (this.gcodeGenerated && this.gcode) {
+                                this.updateViewer3D();
+                            }
+                        }, 200);
+                    }
+                }, 100);
+            });
+
+            // Watch for sidebar collapse/expand to trigger resize
+            this.$watch('leftPanelCollapsed', (collapsed) => {
+                console.log(`📐 Sidebar ${collapsed ? 'collapsed' : 'expanded'}`);
+
+                // Delay para que la animación CSS termine
+                setTimeout(() => {
+                    if (this.currentWorkspace === 'design' && this.canvasManager) {
+                        console.log('🔄 Resizing design canvas after sidebar toggle...');
+                        this.canvasManager.resize();
+                    } else if (this.currentWorkspace === 'preview' && globalGCodeViewer) {
+                        console.log('🔄 Resizing 3D viewer after sidebar toggle...');
+                        globalGCodeViewer.handleResize();
+                    }
+                }, 250); // 250ms para dar tiempo a la animación de 200ms
+            });
+
             console.log('✅ App initialized successfully!');
         },
 
@@ -637,18 +683,22 @@ window.grblApp = function() {
             this.markModified();
             this.addConsoleLine('✅ G-code generado: ' + this.gcodeLines + ' líneas');
 
-            // Cambiar automáticamente a Preview primero
+            // Cambiar automáticamente a Preview
             setTimeout(() => {
                 this.currentWorkspace = 'preview';
                 this.addConsoleLine('👁️ Cambiando a vista previa...');
 
                 // Update 3D viewer DESPUÉS de que el canvas sea visible
+                // El watcher de currentWorkspace ya se encargará de resize y update
+                // Pero agregamos un delay adicional para asegurar
                 setTimeout(() => {
                     if (globalGCodeViewer) {
+                        console.log('🎬 Final update of 3D viewer after G-code generation');
+                        globalGCodeViewer.handleResize();
                         this.updateViewer3D();
                     }
-                }, 100); // Pequeño delay adicional para que el DOM se actualice
-            }, 300);
+                }, 400); // Delay más largo para asegurar que el canvas esté visible
+            }, 100);
         },
 
         groupElementsByTool() {
@@ -1985,9 +2035,15 @@ window.grblApp = function() {
 
             console.log('🎬 Updating 3D viewer...');
 
+            // Asegurar que el canvas tenga dimensiones válidas antes de actualizar
+            globalGCodeViewer.handleResize();
+
             // Parse and visualize G-code
             globalGCodeViewer.parseGCode(this.gcode);
             globalGCodeViewer.visualize(this.viewer3DCurrentPass);
+
+            // Force a render to ensure visibility
+            globalGCodeViewer.forceRender();
 
             // Update statistics
             const stats = globalGCodeViewer.getStats();
@@ -1996,6 +2052,11 @@ window.grblApp = function() {
                 time: stats.time,
                 passes: stats.passes
             };
+
+            // Actualizar variables del preview workspace
+            this.estimatedTime = stats.time;
+            this.totalDistance = stats.distance;
+            this.maxDepth = '3 mm'; // TODO: calcular del G-code real
 
             // Reset animation
             this.viewer3DAnimProgress = 0;
@@ -2619,31 +2680,27 @@ window.grblApp = function() {
                 // - Un punto en (10, 10) G-code está:
                 //   - 10mm a la derecha del origen: gcodeOriginX + 10*pxPerMM
                 //   - 10mm arriba del origen: gcodeOriginY - 10*pxPerMM (porque Y canvas va abajo)
-                //
-                // Como el objeto tiene originX/originY igual al área:
-                // - Si originX:'left', left se refiere al borde izquierdo del objeto
-                // - Si originY:'bottom', top se refiere al borde inferior del objeto
 
-                let canvasLeft, canvasTop;
+                // Calcular la posición objetivo en canvas
+                const targetCanvasX = gcodeOriginX + (targetGcodeX * this.canvasManager.pixelsPerMM);
+                const targetCanvasY = gcodeOriginY - (targetGcodeY * this.canvasManager.pixelsPerMM);
 
-                if (origin === 'bottom-left') {
-                    // El origen del objeto es bottom-left
-                    // left = posición del borde izquierdo
-                    // top = posición del borde inferior (en canvas Y)
-                    canvasLeft = gcodeOriginX + (targetGcodeX * this.canvasManager.pixelsPerMM);
-                    canvasTop = gcodeOriginY - (targetGcodeY * this.canvasManager.pixelsPerMM);
-                } else {
-                    // Para otros orígenes, por ahora usar la misma lógica
-                    // TODO: Implementar para otros orígenes cuando sea necesario
-                    canvasLeft = gcodeOriginX + (targetGcodeX * this.canvasManager.pixelsPerMM);
-                    canvasTop = gcodeOriginY - (targetGcodeY * this.canvasManager.pixelsPerMM);
-                }
+                // IMPORTANTE: Obtener el origen del objeto (debe coincidir con el del área)
+                const objectOrigin = this.canvasManager.getObjectOriginFromWorkArea();
 
-                // Posicionar el cuadrado
-                svgGroup.set({
-                    left: canvasLeft,
-                    top: canvasTop
-                });
+                console.log('📍 Posicionando objeto:');
+                console.log('   Area origin:', origin);
+                console.log('   Object origin:', objectOrigin.originX, objectOrigin.originY);
+                console.log('   Target G-code coords:', targetGcodeX, targetGcodeY, 'mm');
+                console.log('   Target canvas coords:', targetCanvasX.toFixed(1), targetCanvasY.toFixed(1), 'px');
+
+                // Usar setPositionByOrigin para posicionar correctamente según el origen del objeto
+                // Esto maneja correctamente las transformaciones y el escalado
+                svgGroup.setPositionByOrigin(
+                    new fabric.Point(targetCanvasX, targetCanvasY),
+                    objectOrigin.originX,
+                    objectOrigin.originY
+                );
 
                 // Recalcular coordenadas de los controles después de posicionar
                 svgGroup.setCoords();

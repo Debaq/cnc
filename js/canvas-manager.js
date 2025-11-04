@@ -304,12 +304,22 @@ class CanvasManager {
         });
 
         // ResizeObserver para detectar cambios en el contenedor (más confiable)
+        // Esto detecta cuando el contenedor cambia de tamaño (por ejemplo, al colapsar el panel lateral)
         if (typeof ResizeObserver !== 'undefined') {
-            this.resizeObserver = new ResizeObserver(() => {
-                clearTimeout(resizeTimeout);
-                resizeTimeout = setTimeout(() => this.resize(), 100);
+            this.resizeObserver = new ResizeObserver((entries) => {
+                for (let entry of entries) {
+                    const newWidth = entry.contentRect.width;
+                    const newHeight = entry.contentRect.height;
+
+                    // Solo redimensionar si realmente cambió el tamaño del contenedor
+                    if (newWidth > 0 && newHeight > 0) {
+                        clearTimeout(resizeTimeout);
+                        resizeTimeout = setTimeout(() => this.resize(), 100);
+                    }
+                }
             });
             this.resizeObserver.observe(parent);
+            console.log('✅ ResizeObserver attached to canvas container');
         }
 
         // Tool handlers

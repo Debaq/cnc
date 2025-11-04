@@ -117,6 +117,32 @@ class GCodeViewer {
         // Handle window resize
         window.addEventListener('resize', () => this.handleResize());
 
+        // ResizeObserver para detectar cambios en el contenedor del canvas
+        // Esto es crucial para detectar cuando se colapsa el panel lateral o cambia el workspace
+        if (typeof ResizeObserver !== 'undefined') {
+            const parent = this.canvas.parentElement;
+            if (parent) {
+                let resizeTimeout;
+                this.resizeObserver = new ResizeObserver((entries) => {
+                    for (let entry of entries) {
+                        const newWidth = entry.contentRect.width;
+                        const newHeight = entry.contentRect.height;
+
+                        // Solo redimensionar si el contenedor tiene dimensiones válidas
+                        if (newWidth > 0 && newHeight > 0) {
+                            // Usar debounce para evitar múltiples resize
+                            clearTimeout(resizeTimeout);
+                            resizeTimeout = setTimeout(() => {
+                                this.handleResize();
+                            }, 100);
+                        }
+                    }
+                });
+                this.resizeObserver.observe(parent);
+                console.log('✅ ResizeObserver attached to 3D viewer container');
+            }
+        }
+
         // Start render loop
         this.animate();
 
@@ -156,37 +182,8 @@ class GCodeViewer {
     }
 
     createAxes() {
-        // Axes helper (Three.js: X=red, Y=green, Z=blue)
-        const axesHelper = new THREE.AxesHelper(100);
-        this.scene.add(axesHelper);
-
-        // Axis labels - showing CNC axis names with correct colors
-        // CNC Mapping: X=red (right), Y=green (depth/back), Z=blue (up)
-        // Three.js Mapping: X=right, Y=up, Z=forward
-        // So: CNC X→ThreeX, CNC Y→ThreeZ, CNC Z→ThreeY
-        const createLabel = (text, position, color) => {
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = 64;
-            canvas.height = 64;
-            context.font = 'Bold 48px Arial';
-            context.fillStyle = color;
-            context.textAlign = 'center';
-            context.textBaseline = 'middle';
-            context.fillText(text, 32, 32);
-
-            const texture = new THREE.CanvasTexture(canvas);
-            const material = new THREE.SpriteMaterial({ map: texture });
-            const sprite = new THREE.Sprite(material);
-            sprite.position.copy(position);
-            sprite.scale.set(20, 20, 1);
-            return sprite;
-        };
-
-        // CNC axis labels with standard colors
-        this.scene.add(createLabel('X', new THREE.Vector3(110, 0, 0), '#ff0000')); // CNC X (red, right)
-        this.scene.add(createLabel('Z', new THREE.Vector3(0, 110, 0), '#0000ff')); // CNC Z (blue, up) - maps to Three.js Y
-        this.scene.add(createLabel('Y', new THREE.Vector3(0, 0, 110), '#00ff00')); // CNC Y (green, back) - maps to Three.js Z
+        // Axes removed - using only the origin marker instead
+        // The origin marker shows the axis directions at the configured origin point
     }
 
     createOriginMarker() {
@@ -204,20 +201,21 @@ class GCodeViewer {
 
         const origin = this.workArea.origin || 'bottom-left';
 
-        // Map origin position
-        // Bottom-left is (0, 0), top-right is (sizeX, sizeY)
+        // Map origin position in Three.js coordinates
+        // IMPORTANT: Z axis is inverted (workArea.height - Y) to match bottom-left origin
+        // So "bottom" in CNC terms is at Z=sizeY in Three.js, "top" is at Z=0
         switch (origin) {
             case 'bottom-left':
                 originX = 0;
-                originZ = 0;
+                originZ = sizeY; // Bottom in CNC = high Z in Three.js
                 break;
             case 'bottom-center':
                 originX = sizeX / 2;
-                originZ = 0;
+                originZ = sizeY;
                 break;
             case 'bottom-right':
                 originX = sizeX;
-                originZ = 0;
+                originZ = sizeY;
                 break;
             case 'center-left':
                 originX = 0;
@@ -233,19 +231,19 @@ class GCodeViewer {
                 break;
             case 'top-left':
                 originX = 0;
-                originZ = sizeY;
+                originZ = 0; // Top in CNC = low Z in Three.js
                 break;
             case 'top-center':
                 originX = sizeX / 2;
-                originZ = sizeY;
+                originZ = 0;
                 break;
             case 'top-right':
                 originX = sizeX;
-                originZ = sizeY;
+                originZ = 0;
                 break;
             default:
                 originX = 0;
-                originZ = 0;
+                originZ = sizeY; // Default to bottom-left
         }
 
         // Create origin marker group
@@ -272,10 +270,12 @@ class GCodeViewer {
         const zAxis = new THREE.Line(zAxisGeom, zAxisMat);
         markerGroup.add(zAxis);
 
-        // Y axis (green, back)
+        // Y axis (green) - inverted to match coordinate system
+        // In CNC: Y+ goes from bottom to top
+        // In Three.js with inverted Z: this means -Z direction
         const yAxisGeom = new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(0, 0, 0),
-            new THREE.Vector3(0, 0, axisLength)
+            new THREE.Vector3(0, 0, -axisLength) // Negative Z = positive Y in CNC
         ]);
         const yAxisMat = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 3 });
         const yAxis = new THREE.Line(yAxisGeom, yAxisMat);
@@ -388,25 +388,32 @@ class GCodeViewer {
         const cubeY = 10;
 
         if (x >= cubeX && x <= cubeX + cubeSize && y >= cubeY && y <= cubeY + cubeSize) {
-            // Click is in ViewCube area - determine which face
-            const localX = (x - cubeX) / cubeSize;
-            const localY = (y - cubeY) / cubeSize;
+            // Convert click position to ViewCube viewport coordinates (-1 to +1)
+            const localX = ((x - cubeX) / cubeSize) * 2 - 1;
+            const localY = -((y - cubeY) / cubeSize) * 2 + 1; // Invert Y
 
-            let face = null;
-            if (localX < 0.33) {
-                face = 'LEFT';
-            } else if (localX > 0.67) {
-                face = 'RIGHT';
-            } else if (localY < 0.33) {
-                face = 'TOP';
-            } else if (localY > 0.67) {
-                face = 'BOTTOM';
-            } else {
-                face = 'FRONT';
-            }
+            // Create raycaster for the ViewCube scene
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(localX, localY), this.viewCubeCamera);
 
-            if (face && this.viewCubeFaces[face]) {
-                this.setView(face);
+            // Intersect with the ViewCube
+            const intersects = raycaster.intersectObject(this.viewCube);
+
+            if (intersects.length > 0) {
+                // Get the face index that was clicked
+                const faceIndex = intersects[0].faceIndex;
+
+                // BoxGeometry has 12 triangular faces (2 per cube face)
+                // Map triangle face indices to cube face names
+                const cubeFaceIndex = Math.floor(faceIndex / 2);
+                const faceNames = ['RIGHT', 'LEFT', 'TOP', 'BOTTOM', 'FRONT', 'BACK'];
+                const faceName = faceNames[cubeFaceIndex];
+
+                console.log(`🎲 ViewCube clicked: ${faceName}`);
+
+                if (this.viewCubeFaces[faceName]) {
+                    this.setView(faceName);
+                }
             }
         }
     }
@@ -434,12 +441,11 @@ class GCodeViewer {
     updateViewCube() {
         if (!this.viewCube || !this.camera) return;
 
-        // Make ViewCube rotation match camera orientation
-        const cameraDirection = new THREE.Vector3();
-        this.camera.getWorldDirection(cameraDirection);
-
-        // Update ViewCube rotation to match camera
-        this.viewCube.rotation.copy(this.camera.rotation);
+        // The ViewCube should rotate with the camera but inverted
+        // so it shows which face we're looking at
+        const quaternion = this.camera.quaternion.clone();
+        quaternion.invert(); // Invert the rotation
+        this.viewCube.quaternion.copy(quaternion);
     }
 
     renderViewCube() {
@@ -480,7 +486,8 @@ class GCodeViewer {
         const lines = gcode.split('\n');
         // Initial position in Three.js coordinates (Y=up, Z=forward)
         // This corresponds to G-code position X=0, Y=0, Z=5 (safe height)
-        let currentPosition = { x: 0, y: 5, z: 0 };
+        // Note: Z is inverted, so G-code Y=0 → Three.js Z=workArea.height
+        let currentPosition = { x: 0, y: 5, z: this.workArea.height };
         let currentPass = -1;
         let passCommands = [];
 
@@ -551,12 +558,15 @@ class GCodeViewer {
         const zMatch = line.match(/Z(-?\d+\.?\d*)/);
         const fMatch = line.match(/F(\d+\.?\d*)/);
 
-        // Convert CNC coordinates (X right, Y back, Z up) to Three.js coordinates (X right, Y up, Z forward)
-        // G-code: X=right, Y=depth, Z=up
+        // Convert CNC coordinates to Three.js coordinates
+        // G-code: X=right, Y=depth (from bottom-left origin), Z=up
         // Three.js: X=right, Y=up, Z=forward
-        // Conversion: ThreeX = GcodeX, ThreeY = GcodeZ, ThreeZ = GcodeY
+        //
+        // IMPORTANT: Invert Z axis to match bottom-left origin orientation
+        // When viewing from TOP in Three.js, we see the XZ plane
+        // Z+ should go down in screen (toward bottom) to match Y+ in CNC coords
         if (xMatch) command.end.x = parseFloat(xMatch[1]);
-        if (yMatch) command.end.z = parseFloat(yMatch[1]); // CNC Y becomes Three.js Z
+        if (yMatch) command.end.z = this.workArea.height - parseFloat(yMatch[1]); // CNC Y becomes Three.js Z (inverted)
         if (zMatch) command.end.y = parseFloat(zMatch[1]); // CNC Z becomes Three.js Y
         if (fMatch) command.feedRate = parseFloat(fMatch[1]);
 
@@ -890,16 +900,43 @@ class GCodeViewer {
         this.renderViewCube();
     }
 
+    // Force a render (useful when canvas becomes visible)
+    forceRender() {
+        if (!this.renderer || !this.scene || !this.camera) {
+            console.warn('⚠️ Cannot force render: renderer not initialized');
+            return;
+        }
+
+        console.log('🎨 Forcing render...');
+        this.renderViewCube();
+    }
+
     handleResize() {
-        if (!this.canvas || !this.camera || !this.renderer) return;
+        if (!this.canvas || !this.camera || !this.renderer) {
+            console.warn('⚠️ Cannot resize: viewer not fully initialized');
+            return;
+        }
 
         const width = this.canvas.clientWidth;
         const height = this.canvas.clientHeight;
+
+        console.log(`📐 3D Viewer resize: ${width}x${height}`);
+
+        // No redimensionar si el canvas no es visible o tiene dimensiones inválidas
+        if (width <= 0 || height <= 0) {
+            console.warn(`⚠️ Cannot resize 3D viewer: invalid dimensions ${width}x${height}`);
+            return;
+        }
 
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
 
         this.renderer.setSize(width, height);
+
+        // Force a render after resize
+        this.forceRender();
+
+        console.log('✅ 3D Viewer resized successfully');
     }
 
     // ====================================
@@ -956,6 +993,13 @@ class GCodeViewer {
             this.renderer.dispose();
         }
 
+        // Limpiar event listeners
         window.removeEventListener('resize', () => this.handleResize());
+
+        // Limpiar ResizeObserver
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+        }
     }
 }
